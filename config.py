@@ -11,7 +11,7 @@ GichanFormant 전역 설정 (Configuration)
 # =============================================================================
 # 1. 프로그램 기본 정보 (App Info)
 # =============================================================================
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 APP_TITLE = f"GichanFormant v{APP_VERSION}"
 AUTHOR = "Bae Gichan"
 COPYRIGHT_TEXT = f"Copyright © 2026 {AUTHOR}. All rights reserved."
@@ -168,6 +168,7 @@ LOG_MSG = {
 
     "PLOT_OPEN": "[INFO] {ptype} 플롯이 새 창으로 열렸습니다. (대상: {fname})",
     "PLOT_OPEN_DONE": "플롯 창 생성 완료: {fname}",
+    "ANALYSIS_OPEN": "모음 상세 분석 창이 열렸습니다: {title_suffix}",
     "COMPARE_OPEN": "[INFO] 다중 플롯 비교 모드가 실행되었습니다. ({blue_name} vs {red_name})",
     "PLOT_UPDATE": "[INFO] 축 범위 및 신뢰 타원 설정이 업데이트되었습니다.",
     "PLOT_RANGE_INIT": "[INFO] 좌표축 범위 및 신뢰 타원이 초기화되었습니다.",

@@ -396,6 +396,8 @@ class PlotPopup(QMainWindow):
         self.fixed_plot_params = fixed_plot_params
         self.plot_data_snapshot = plot_data_snapshot
         self.current_idx = current_idx
+        if hasattr(self, 'btn_vowel_analysis') and plot_data_snapshot and len(plot_data_snapshot) >= 1:
+            self.btn_vowel_analysis.setEnabled(True)
 
     def set_draw_result(self, snapping_data, label_data, label_text_artists, plot_key):
         """draw_plot 직후 호출. 스냅/라벨/플롯키를 명시적으로 주입."""
@@ -714,11 +716,7 @@ class PlotPopup(QMainWindow):
         self.btn_vowel_analysis.setFont(font_normal)
         self.btn_vowel_analysis.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_vowel_analysis.setEnabled(False)
-        self.btn_vowel_analysis.setStyleSheet("""
-            QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #606266; }
-            QPushButton:hover { background-color: #E4E7ED; }
-            QPushButton:disabled { background-color: #F5F7FA; color: #C0C4CC; border: 1px solid #E4E7ED; }
-        """)
+        self.btn_vowel_analysis.setStyleSheet(self.nav_btn_style)
         self.btn_vowel_analysis.clicked.connect(self._on_vowel_analysis_clicked)
         tool_group.addWidget(self.btn_vowel_analysis)
 
@@ -1100,9 +1098,10 @@ class PlotPopup(QMainWindow):
         self.controller.open_compare_dialog(idx, parent_window=self)
 
     def _on_vowel_analysis_clicked(self):
-        """모음 상세 분석 버튼 클릭 핸들러 (추후 구현 예정)"""
+        """모음 상세 분석 버튼 클릭 핸들러: 별도 Analysis 창을 연다."""
         self.setFocus()
-        pass
+        if hasattr(self.controller, 'open_vowel_analysis_window'):
+            self.controller.open_vowel_analysis_window(self)
 
     def _safe_toggle_layer_dock(self):
         if self._is_input_focused():

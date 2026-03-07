@@ -501,7 +501,7 @@ class DesignSettingsPanel(QWidget):
         graph_content_layout.setSpacing(10)
 
         row_unit, self.sw_show_axis_units = self._create_toggle_row("눈금 단위", default_checked=False)
-        self.sw_show_axis_units.setToolTip("ON 시 X·Y축 이름 뒤에 (Hz) 또는 (Bark) 표시")
+        self.sw_show_axis_units.setToolTip("ON 시 X·Y축 이름 뒤에 (Hz) 등 눈금 단위 표시")
         row_minor, self.sw_show_minor_ticks = self._create_toggle_row("세부 눈금 표시", default_checked=True)
         self.sw_show_minor_ticks.setToolTip("ON 시 주 눈금 사이에 세부 눈금을 표시합니다.")
         row_axis, self.sw_axis_position_swap = self._create_toggle_row("축·눈금 위치 반전", default_checked=False)
@@ -1083,7 +1083,7 @@ class CompareDesignSettingsPanel(QWidget):
         graph_content_cmp_layout.setSpacing(10)
 
         row_unit, self.sw_show_axis_units = self._create_toggle_row("눈금 단위", default_checked=False)
-        self.sw_show_axis_units.setToolTip("ON 시 X·Y축 이름 뒤에 (Hz) 또는 (Bark) 표시")
+        self.sw_show_axis_units.setToolTip("ON 시 X·Y축 이름 뒤에 (Hz) 등 눈금 단위 표시")
         self.axis_units_row_widget = QWidget()
         self.axis_units_row_widget.setLayout(row_unit)
         self.axis_units_row_widget.setContentsMargins(0, 0, 0, 0)

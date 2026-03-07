@@ -16,6 +16,7 @@ from ui.main_window import MainUI
 from ui.file_guide import DataGuidePopup
 from ui.popup_plot import PlotPopup
 from ui.compare_plot import SelectCompareDialog, ComparePlotPopup
+from ui.vowel_analysis_dialog import VowelAnalysisDialog
 from model.data_processor import DataProcessor
 from engine.plot_engine import PlotEngine, kor_font
 from tools.ruler import RulerTool
@@ -515,6 +516,53 @@ class MainController:
         if hasattr(popup, '_refresh_layer_dock_vowels'):
             popup._refresh_layer_dock_vowels()
         app_logger.info(config.LOG_MSG["PLOT_OPEN_DONE"].format(fname=current_data['name']))
+
+    def open_vowel_analysis_window(self, popup_window):
+        """popup_plot 또는 compare_plot의 '모음 상세 분석' 클릭 시 호출. 해당 창의 파일(들)에 대한 분석 창을 연다."""
+        snapshot = getattr(popup_window, 'plot_data_snapshot', None)
+        params = getattr(popup_window, 'fixed_plot_params', None)
+        if snapshot is None and hasattr(popup_window, 'idx_blue') and hasattr(popup_window, 'idx_red'):
+            data_blue, data_red = self.get_compare_data(popup_window.idx_blue, popup_window.idx_red)
+            if data_blue and data_red:
+                snapshot = [data_blue, data_red]
+            params = params or self._get_current_plot_params(popup_window)
+        if not snapshot or not params:
+            return
+        outlier_mode = self.get_outlier_mode()
+        if outlier_mode == '1sigma':
+            suffix = " (이상치 제거 : 1σ)"
+        elif outlier_mode == '2sigma':
+            suffix = " (이상치 제거 : 2σ)"
+        else:
+            suffix = ""
+        if len(snapshot) == 1:
+            title_suffix = snapshot[0].get('name', '') + suffix
+        elif len(snapshot) == 2 and hasattr(popup_window, 'idx_blue'):
+            # 다중 플롯(비교) 모드: 파일A, 파일B의 ...
+            names = [snapshot[0].get('name', ''), snapshot[1].get('name', '')]
+            title_suffix = f"{names[0]}, {names[1]}{suffix}"
+        else:
+            first_name = snapshot[0].get('name', '') if snapshot else ''
+            title_suffix = f"{first_name} 외 {len(snapshot) - 1}개{suffix}"
+        norm = (params or {}).get('normalization')
+        if norm:
+            title_suffix += f" / {norm}"
+        app_logger.info(config.LOG_MSG["ANALYSIS_OPEN"].format(title_suffix=title_suffix))
+        initial_tab = getattr(popup_window, 'current_idx', 0)
+        dlg = VowelAnalysisDialog(
+            popup_window,
+            self,
+            snapshot,
+            params,
+            title_suffix,
+            initial_tab_idx=initial_tab,
+        )
+        popup_window.raise_()
+        popup_window.activateWindow()
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        self.open_popups.append(dlg)
 
     # --- 다중 비교 팝업 및 제어 로직 ---
 

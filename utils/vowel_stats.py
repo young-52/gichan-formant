@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Optional, Tuple, Any
 
+from utils.math_utils import hz_to_bark
+
 
 def calculate_vowel_statistics(
     df: pd.DataFrame,
@@ -189,6 +191,45 @@ def calculate_point_distances_from_centroid(
             'distance_max': float(np.max(distances))
         }
     
+    return result
+
+
+def calculate_point_distances_from_centroid_bark(
+    df: pd.DataFrame,
+    label_col: str = 'Label',
+    x_hz=None,
+) -> Dict[str, Dict[str, float]]:
+    """
+    각 모음 내 개별 포인트에서 해당 모음의 중심(Bark 공간)까지의 유클리드 거리 통계.
+    F1과 X축(Hz)을 Bark로 변환한 (F1_bark, x_bark) 공간에서 centroid와 거리 계산.
+    플롯 X축(Hz) 배열 x_hz를 넘기면 해당 축 기준 Bark 거리로 계산. None이면 df['F2'] 사용.
+    """
+    if df.empty or label_col not in df.columns:
+        return {}
+    if 'F1' not in df.columns:
+        return {}
+    x_vals = np.asarray(x_hz) if x_hz is not None else df['F2'].values
+    if x_hz is None and 'F2' not in df.columns:
+        return {}
+    if len(x_vals) != len(df):
+        return {}
+    f1_bark = hz_to_bark(df['F1'].values)
+    x_bark = hz_to_bark(x_vals)
+    labels = df[label_col].values
+    result = {}
+    for vowel in pd.unique(labels):
+        mask = labels == vowel
+        if not np.any(mask):
+            continue
+        cx = float(np.mean(f1_bark[mask]))
+        cy = float(np.mean(x_bark[mask]))
+        dists = np.sqrt((f1_bark[mask] - cx) ** 2 + (x_bark[mask] - cy) ** 2)
+        result[vowel] = {
+            'distance_mean': float(np.mean(dists)),
+            'distance_std': float(np.std(dists)) if np.sum(mask) > 1 else 0.0,
+            'distance_min': float(np.min(dists)),
+            'distance_max': float(np.max(dists))
+        }
     return result
 
 

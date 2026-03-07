@@ -707,14 +707,15 @@ class ComparePlotPopup(QMainWindow):
         self.btn_vowel_analysis.setFixedHeight(35)
         self.btn_vowel_analysis.setFont(font_normal)
         self.btn_vowel_analysis.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.btn_vowel_analysis.setEnabled(False)
-        self.btn_vowel_analysis.setStyleSheet("""
-            QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #606266; }
-            QPushButton:hover { background-color: #E4E7ED; }
-            QPushButton:disabled { background-color: #F5F7FA; color: #C0C4CC; border: 1px solid #E4E7ED; }
-        """)
+        self.btn_vowel_analysis.setEnabled(True)
         self.btn_vowel_analysis.clicked.connect(self._on_vowel_analysis_clicked)
         tool_group.addWidget(self.btn_vowel_analysis)
+
+        nav_btn_style = """
+            QPushButton { background-color: white; border: 1px solid #DCDFE6; border-radius: 4px; color: #333333; }
+            QPushButton:hover { background-color: #F5F7FA; color: #409EFF; border-color: #C0C4CC; }
+        """
+        self.btn_vowel_analysis.setStyleSheet(nav_btn_style)
 
         btn_style = """
             QPushButton { background-color: white; border: 1px solid #DCDFE6; border-radius: 4px; color: #333333; }
@@ -1016,9 +1017,9 @@ class ComparePlotPopup(QMainWindow):
         self.open_vowel_filter()
 
     def _on_vowel_analysis_clicked(self):
-        """모음 상세 분석 버튼 클릭 핸들러 (추후 구현 예정)"""
+        """모음 상세 분석: 비교 중인 두 파일에 대해 탭 2개짜리 분석 창을 연다."""
         self.setFocus()
-        pass
+        self.controller.open_vowel_analysis_window(self)
 
     def open_vowel_filter(self):
         if self.filter_panel is not None and self.filter_panel.isVisible():
