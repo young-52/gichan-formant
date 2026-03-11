@@ -6,6 +6,7 @@ import os
 import re
 
 import config
+import app_logger
 
 # 텍스트 파일 로드 시 시도할 인코딩 순서 (UTF-16 BOM, UTF-8, 한글 Windows, 기타)
 ENCODINGS = ["utf-8", "utf-16", "utf-16-le", "utf-16-be", "cp949", "euc-kr", "latin-1"]
@@ -30,6 +31,8 @@ class DataProcessor:
         # 전체 병합된 포먼트 데이터 (F1, F2, F3, Label 등)
         self.df_all = pd.DataFrame()
         self.has_f3 = False
+        # 파일별 조건 미충족 행(라벨별 누락) 정보: load_files 호출마다 갱신
+        self.row_drops = []
 
     def load_files(self, filepaths):
         """
@@ -41,6 +44,7 @@ class DataProcessor:
         """
         dfs = []
         errors = []
+        self.row_drops = []
 
         for path in filepaths:
             try:
@@ -52,12 +56,15 @@ class DataProcessor:
                     temp_df = _read_csv_with_encoding(path)
 
                 # 개별 파일 전처리 (실패 시 구체적 사유 반환)
-                processed_df, parse_error = self._parse_fixed_columns(temp_df)
+                processed_df, parse_error, drop_report = self._parse_fixed_columns(temp_df)
 
                 if parse_error:
                     errors.append((path, parse_error))
                 elif processed_df is not None and not processed_df.empty:
                     dfs.append(processed_df)
+                    # 조건 위반으로 제외된 행이 있다면, 파일 경로와 함께 누락 정보를 저장해 둔다.
+                    if drop_report:
+                        self.row_drops.append((path, drop_report))
                 else:
                     errors.append((path, config.PARSE_ERR_EMPTY_RESULT))
 
@@ -94,7 +101,7 @@ class DataProcessor:
         """
         # 분석에 필요한 최소 열 개수 검증
         if len(df.columns) < 2:
-            return None, config.PARSE_ERR_COLUMNS_TOO_FEW
+            return None, config.PARSE_ERR_COLUMNS_TOO_FEW, None
 
         # 1. F1, F2 데이터 추출 및 숫자형 변환
         f1_col = df.iloc[:, 0]
@@ -108,7 +115,7 @@ class DataProcessor:
         df = df[valid_idx].copy()
 
         if df.empty:
-            return None, config.PARSE_ERR_F1_F2_INVALID
+            return None, config.PARSE_ERR_F1_F2_INVALID, None
 
         # 2. 결과 데이터프레임 초기화
         final_df = pd.DataFrame()
@@ -148,7 +155,31 @@ class DataProcessor:
         # 라벨이 누락된 행 제거
         final_df.dropna(subset=['Label'], inplace=True)
 
-        return final_df, None
+        # ------------------------------------------------------------------
+        # F1>0, F1<F2, (F3 존재 시) F2<F3 및 F3>0 조건을 만족하지 않는 행 제거
+        # 제거된 행에 대해서는 라벨별 누락 개수를 drop_report로 반환한다.
+        # ------------------------------------------------------------------
+        drop_report = None
+        if not final_df.empty:
+            if 'F3' in final_df.columns:
+                cond = (
+                    (final_df['F1'] > 0) &
+                    (final_df['F2'] > final_df['F1']) &
+                    (final_df['F3'] > final_df['F2']) &
+                    (final_df['F3'] > 0)
+                )
+            else:
+                cond = (
+                    (final_df['F1'] > 0) &
+                    (final_df['F2'] > final_df['F1'])
+                )
+            invalid_rows = final_df[~cond]
+            if not invalid_rows.empty:
+                # 라벨별 누락 개수 집계
+                drop_report = invalid_rows['Label'].value_counts().to_dict()
+            final_df = final_df[cond]
+
+        return final_df, None, drop_report
 
     def get_data(self):
         return self.df_all.copy()

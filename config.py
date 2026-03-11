@@ -11,7 +11,7 @@ GichanFormant 전역 설정 (Configuration)
 # =============================================================================
 # 1. 프로그램 기본 정보 (App Info)
 # =============================================================================
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.3.2.1"
 APP_TITLE = f"GichanFormant v{APP_VERSION}"
 AUTHOR = "Bae Gichan"
 COPYRIGHT_TEXT = f"Copyright © 2026 {AUTHOR}. All rights reserved."
@@ -168,6 +168,7 @@ LOG_MSG = {
     "FILE_LOAD_FAILED_SUMMARY": "로드 실패: {fail_count}개의 파일에 데이터 오류가 있습니다. ({names})",
     "FILE_LOAD_FAILED_DEBUG": "[DEBUG] {name} 로드 실패 원인 예시: {msg}",
     "FILE_REMOVED": "파일이 리스트에서 제거되었습니다: {removed_name}",
+    "FILE_ROW_DROPPED": "[INFO] {name}에서 데이터 조건을 만족하지 않아 일부 데이터 행이 제외되었습니다. (라벨별 누락: {detail})",
 
     "OUTLIER_OFF": "[INFO] 이상치 제거가 해제되었습니다.",
     "OUTLIER_REMOVED_SUMMARY": "총 {file_count}개 파일에서 {total_removed}개의 데이터 포인트가 이상치로 제거되었습니다.{detail}",

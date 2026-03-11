@@ -234,6 +234,7 @@ class MainController:
             "failed": [],   # [(fname, errors), ...]
             "has_f3_all": False,
             "total_files": len(self.filepaths),
+            "row_dropped": [],  # [(fname, detail_dict), ...]
         }
         new_files = [f for f in filepaths if f not in self.filepaths]
         if not new_files:
@@ -256,6 +257,10 @@ class MainController:
                     'has_f3': has_f3
                 })
                 result["success_count"] += 1
+                # 데이터 조건 위반으로 제외된 행이 있다면, 파일명 기준으로 누락 라벨 정보를 누적
+                for path, drop_report in getattr(temp_processor, "row_drops", []):
+                    if drop_report:
+                        result["row_dropped"].append((os.path.basename(path), drop_report))
             else:
                 result["failed"].append((fname, errors or []))
 
@@ -269,6 +274,11 @@ class MainController:
             app_logger.info(config.LOG_MSG["FILE_LOAD_NEW_SUCCESS"].format(
                 success_count=result["success_count"], total_files=result["total_files"]
             ))
+            # 신규 파일 로드 로그 이후, 조건 미충족으로 제외된 행에 대한 라벨별 누락 정보를 파일별로 출력
+            for name, drop_report in result.get("row_dropped", []):
+                if drop_report:
+                    detail = ", ".join(f"{lbl}: {cnt}개" for lbl, cnt in drop_report.items())
+                    app_logger.info(config.LOG_MSG["FILE_ROW_DROPPED"].format(name=name, detail=detail))
         if result["failed"]:
             names = ", ".join(name for name, _ in result["failed"])
             app_logger.warning(config.LOG_MSG["FILE_LOAD_FAILED_SUMMARY"].format(
