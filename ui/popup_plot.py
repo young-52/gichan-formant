@@ -51,6 +51,7 @@ from .icon_widgets import BidirectionalArrowButton
 from .tool_indicator import ToolStatusIndicator
 from .layer_dock import LayerDockWidget
 from draw import DrawModeIndicator, DrawMode, draw_line, draw_polygon, draw_reference
+from draw.draw_common import polygon_area, AreaLabelObject
 from . import layout_constants as layout
 from .display_utils import format_file_label
 from utils.math_utils import hz_to_bark, bark_to_hz
@@ -1636,9 +1637,11 @@ class PlotPopup(QMainWindow):
                 self.canvas.setFocus()
             else:
                 self.setFocus()
+            app_logger.info(config.LOG_MSG["DRAW_ON"])
         else:
             self._draw_tool_deactivate()
             self.draw_indicator.hide()
+            app_logger.info(config.LOG_MSG["DRAW_OFF_INFO"])
 
     def _get_current_draw_objects(self):
         """현재 파일 인덱스에 해당하는 그리기 객체 리스트 (파일별 분리)."""
@@ -1669,7 +1672,30 @@ class PlotPopup(QMainWindow):
         self._draw_objects_by_file[idx] = list(lst)
 
     def _on_draw_object_complete(self, obj):
-        self._get_current_draw_objects().append(obj)
+        objs = self._get_current_draw_objects()
+        objs.append(obj)
+        if (
+            getattr(obj, "type", "") == "polygon"
+            and getattr(obj, "points", None)
+            and len(obj.points) >= 3
+            and getattr(obj, "id", "")
+        ):
+            area = polygon_area(obj.points)
+            xs = [p[0] for p in obj.points]
+            ys = [p[1] for p in obj.points]
+            cx = sum(xs) / len(xs)
+            cy = sum(ys) / len(ys)
+            area_label = AreaLabelObject(
+                parent_id=obj.id,
+                value=area,
+                x=cx,
+                y=cy,
+                axis_units=getattr(obj, "axis_units", "Hz"),
+                visible=obj.visible,
+                locked=obj.locked,
+                semi=obj.semi,
+            )
+            objs.append(area_label)
         self._redraw_draw_layer()
         if (
             hasattr(self, "_layer_dock_content")
@@ -1692,25 +1718,35 @@ class PlotPopup(QMainWindow):
             except Exception:
                 pass
         self._draw_layer_artists = []
+        self._draw_layer_area_label_refs = []
         for obj in self._get_current_draw_objects():
             if not getattr(obj, "visible", True):
                 continue
-            alpha = 0.4 if getattr(obj, "semi", False) else 0.8
+            # 라벨 레이어와 동일: semi 시 scatter_alpha 0.15 수준, text_alpha 0.3
+            is_semi = getattr(obj, "semi", False)
+            line_alpha = 0.15 if is_semi else 0.5
             if getattr(obj, "type", None) == "line" and hasattr(obj, "points"):
                 xs = [p[0] for p in obj.points]
                 ys = [p[1] for p in obj.points]
                 (line,) = ax.plot(
-                    xs, ys, "k-", linewidth=1.5, alpha=alpha, zorder=1, clip_on=False
+                    xs,
+                    ys,
+                    "k-",
+                    linewidth=1.5,
+                    alpha=line_alpha,
+                    zorder=1,
+                    clip_on=False,
                 )
                 self._draw_layer_artists.append(line)
             elif getattr(obj, "type", None) == "polygon" and hasattr(obj, "points"):
                 from matplotlib.patches import Polygon as MplPolygon
 
-                # 테두리만 alpha 적용, 내부는 고정 투명도(0.15) — alpha 인자 제거로 덮어씌움 방지
-                edge_alpha = 0.4 if getattr(obj, "semi", False) else 0.8
+                # 라벨 레이어와 동일: semi 시 내부·테두리 모두 반투명
+                face_alpha = 0.06 if is_semi else 0.15
+                edge_alpha = 0.3 if is_semi else 0.8
                 poly = MplPolygon(
                     obj.points,
-                    facecolor=(0.2, 0.4, 0.8, 0.15),
+                    facecolor=(0.2, 0.4, 0.8, face_alpha),
                     edgecolor=(0, 0, 0, edge_alpha),
                     linewidth=1.5,
                     zorder=1,
@@ -1739,15 +1775,15 @@ class PlotPopup(QMainWindow):
                     and self.design_settings.get("font_style") == "serif"
                 ):
                     font_family = ["Times New Roman", "Noto Serif KR", "DejaVu Serif"]
+                ref_alpha = 0.3 if getattr(obj, "semi", False) else REF_LINE_ALPHA
+                text_alpha = 0.3 if getattr(obj, "semi", False) else 1.0
                 if obj.mode == "horizontal":
                     (ref_line,) = ax.plot(
                         xlim,
                         [plot_v, plot_v],
                         color=REF_LINE_COLOR,
                         linewidth=1,
-                        alpha=REF_LINE_ALPHA
-                        if not getattr(obj, "semi", False)
-                        else 0.3,
+                        alpha=ref_alpha,
                         zorder=1.5,
                         clip_on=True,
                     )
@@ -1758,6 +1794,7 @@ class PlotPopup(QMainWindow):
                         fontsize=12,
                         fontfamily=font_family,
                         color="#303133",
+                        alpha=text_alpha,
                         va="center",
                         zorder=2,
                         clip_on=True,
@@ -1770,9 +1807,7 @@ class PlotPopup(QMainWindow):
                         ylim,
                         color=REF_LINE_COLOR,
                         linewidth=1,
-                        alpha=REF_LINE_ALPHA
-                        if not getattr(obj, "semi", False)
-                        else 0.3,
+                        alpha=ref_alpha,
                         zorder=1.5,
                         clip_on=True,
                     )
@@ -1783,6 +1818,7 @@ class PlotPopup(QMainWindow):
                         fontsize=12,
                         fontfamily=font_family,
                         color="#303133",
+                        alpha=text_alpha,
                         va="bottom",
                         ha="center",
                         zorder=2,
@@ -1790,8 +1826,143 @@ class PlotPopup(QMainWindow):
                     )
                     self._draw_layer_artists.append(ref_line)
                     self._draw_layer_artists.append(ref_txt)
+            elif getattr(obj, "type", None) == "area_label":
+                v = getattr(obj, "value", 0)
+                u = (getattr(obj, "axis_units", "Hz") or "Hz").strip().lower()
+                if u == "norm" or "norm" in u:
+                    txt = f"{v:.2f}"
+                else:
+                    txt = str(int(round(v)))
+                font_family = ["DejaVu Sans", "Malgun Gothic"]
+                if (
+                    getattr(self, "design_settings", None)
+                    and self.design_settings.get("font_style") == "serif"
+                ):
+                    font_family = ["Times New Roman", "Noto Serif KR", "DejaVu Serif"]
+                # 라벨 레이어와 동일: semi 시 text_alpha 0.3
+                text_alpha = 0.3 if getattr(obj, "semi", False) else 1.0
+                txt_artist = ax.text(
+                    getattr(obj, "x", 0),
+                    getattr(obj, "y", 0),
+                    txt,
+                    fontsize=10,
+                    fontfamily=font_family,
+                    color="#303133",
+                    alpha=text_alpha,
+                    va="center",
+                    ha="center",
+                    zorder=2,
+                    clip_on=True,
+                )
+                self._draw_layer_artists.append(txt_artist)
+                self._draw_layer_area_label_refs.append((txt_artist, obj))
         if self.canvas:
+            self._ensure_area_label_drag_connected()
             self.canvas.draw_idle()
+
+    def _ensure_area_label_drag_connected(self):
+        """넓이 텍스트 드래그 이동: 그리기 모드가 꺼져 있을 때만 동작."""
+        if getattr(self, "_area_label_drag_cids", None) is not None:
+            return
+        if not getattr(self, "canvas", None):
+            return
+        c = self.canvas
+        try:
+            cid_bp = c.mpl_connect(
+                "button_press_event", self._on_canvas_area_label_press
+            )
+            cid_mv = c.mpl_connect(
+                "motion_notify_event", self._on_canvas_area_label_move
+            )
+            cid_br = c.mpl_connect(
+                "button_release_event", self._on_canvas_area_label_release
+            )
+            self._area_label_drag_cids = (cid_bp, cid_mv, cid_br)
+            self._dragging_area_label_obj = None
+            self._area_label_cursor_changed = False
+        except Exception:
+            self._area_label_drag_cids = ()
+
+    def _area_label_hit_at_px(self, x_px, y_px, pad_px=14):
+        """픽셀 좌표 (x_px, y_px)에서 넓이 텍스트 히트 여부. 라벨 이동 툴과 동일하게 get_window_extent+패딩 사용."""
+        refs = getattr(self, "_draw_layer_area_label_refs", [])
+        if not refs or not getattr(self, "figure", None) or not self.figure.axes:
+            return None
+        try:
+            renderer = self.canvas.get_renderer()
+        except Exception:
+            return None
+        for art, obj in refs:
+            try:
+                bbox = art.get_window_extent(renderer)
+                x0, x1 = min(bbox.x0, bbox.x1) - pad_px, max(bbox.x0, bbox.x1) + pad_px
+                y0, y1 = min(bbox.y0, bbox.y1) - pad_px, max(bbox.y0, bbox.y1) + pad_px
+                if x0 <= x_px <= x1 and y0 <= y_px <= y1:
+                    return obj
+            except Exception:
+                continue
+        return None
+
+    def _on_canvas_area_label_press(self, event):
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            return
+        if getattr(self, "_draw_tool", None) is not None:
+            return
+        hit = self._area_label_hit_at_px(event.x, event.y)
+        if hit is not None:
+            self._dragging_area_label_obj = hit
+
+    def _on_canvas_area_label_move(self, event):
+        obj = getattr(self, "_dragging_area_label_obj", None)
+        if obj is not None:
+            if (
+                event.inaxes is not None
+                and event.xdata is not None
+                and event.ydata is not None
+            ):
+                obj.x = float(event.xdata)
+                obj.y = float(event.ydata)
+                refs = getattr(self, "_draw_layer_area_label_refs", [])
+                for art, o in refs:
+                    if o is obj:
+                        try:
+                            art.set_position((obj.x, obj.y))
+                        except Exception:
+                            pass
+                        break
+                if self.canvas:
+                    self.canvas.draw_idle()
+            return
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            return
+        if getattr(self, "_draw_tool", None) is not None:
+            return
+        hit = (
+            self._area_label_hit_at_px(event.x, event.y)
+            if event.inaxes is not None
+            else None
+        )
+        try:
+            if hit is not None:
+                if not getattr(self, "_area_label_cursor_changed", False):
+                    self.canvas.setCursor(Qt.CursorShape.SizeAllCursor)
+                    self._area_label_cursor_changed = True
+            else:
+                if getattr(self, "_area_label_cursor_changed", False):
+                    self.canvas.unsetCursor()
+                    self._area_label_cursor_changed = False
+        except Exception:
+            pass
+
+    def _on_canvas_area_label_release(self, event):
+        if getattr(self, "_dragging_area_label_obj", None) is not None:
+            self._dragging_area_label_obj = None
+        if getattr(self, "_area_label_cursor_changed", False):
+            try:
+                self.canvas.unsetCursor()
+            except Exception:
+                pass
+            self._area_label_cursor_changed = False
 
     def _on_draw_mode_changed(self, mode):
         if mode is None:

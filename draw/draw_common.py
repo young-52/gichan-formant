@@ -14,6 +14,7 @@ __all__ = [
     "LineObject",
     "PolygonObject",
     "ReferenceLineObject",
+    "AreaLabelObject",
     "polygon_area",
 ]
 
@@ -43,7 +44,7 @@ class LineObject:
 
 @dataclass
 class PolygonObject:
-    """영역(폴리곤) 객체. 닫힌 점 리스트. point_labels: 꼭지점 스냅 라벨 (o-e-a 등, 닫힌 표시는 UI에서)."""
+    """영역(폴리곤) 객체. id: 자식 넓이 텍스트(AreaLabelObject)와의 매핑용."""
 
     type: str = "polygon"
     name: str = ""
@@ -52,6 +53,7 @@ class PolygonObject:
     points: list[tuple[float, float]] = field(default_factory=list)
     point_labels: list[str] = field(default_factory=list)
     axis_units: str = "Hz"
+    id: str = ""
     locked: bool = False
     semi: bool = False
 
@@ -73,7 +75,24 @@ class ReferenceLineObject:
     semi: bool = False
 
 
-DrawObject = LineObject | PolygonObject | ReferenceLineObject
+@dataclass
+class AreaLabelObject:
+    """영역(Polygon) 넓이 텍스트. 부모 polygon의 parent_id로 종속. visible/locked/semi는 부모와 동기화."""
+
+    type: str = "area_label"
+    name: str = ""
+    visible: bool = True
+    order: int = 0
+    parent_id: str = ""
+    value: float = 0.0
+    x: float = 0.0
+    y: float = 0.0
+    axis_units: str = "Hz"
+    locked: bool = False
+    semi: bool = False
+
+
+DrawObject = LineObject | PolygonObject | ReferenceLineObject | AreaLabelObject
 
 
 def polygon_area(points: list[tuple[float, float]]) -> float:

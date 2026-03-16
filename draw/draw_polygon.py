@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Callable
 
 import numpy as np
@@ -251,11 +252,12 @@ class DrawPolygonTool:
             return
         # 닫힌 점 리스트 (마지막 = 시작점 복사는 이미 포함됨)
         points = self._points.copy()
-        area = polygon_area(points)
+        polygon_area(points)
         obj = PolygonObject(
             points=points,
             point_labels=self._point_labels.copy(),
             axis_units=self.axis_units,
+            id=uuid.uuid4().hex[:12],
         )
         self._clear_current()
         if self.on_complete:

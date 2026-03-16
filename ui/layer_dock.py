@@ -445,6 +445,14 @@ def _draw_object_display_name(draw_objects, index):
         else:
             s = str(int(v))
         return f"참조선 : {axis_name}={s}"
+    if t == "area_label":
+        v = getattr(obj, "value", 0)
+        unit = (getattr(obj, "axis_units", "Hz") or "Hz").strip().lower()
+        if unit == "norm" or "norm" in unit:
+            s = f"{v:.2f}"
+        else:
+            s = str(int(round(v)))
+        return f"넓이 : {s}"
     return f"그리기 {index + 1}"
 
 
@@ -806,6 +814,17 @@ class LayerDockWidget(QWidget):
         self.btn_reset_layers.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_reset_layers.clicked.connect(self._on_reset_layers_clicked)
         reset_row.addWidget(self.btn_reset_layers)
+
+        self.btn_batch_delete_draw = QPushButton("일괄 삭제")
+        self.btn_batch_delete_draw.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_batch_delete_draw.setStyleSheet(
+            "QPushButton { background-color: #F5F7FA; border: 1px solid #DCDFE6; border-radius: 4px; color: #606266; padding: 4px 10px; }"
+            "QPushButton:hover { background-color: #FDE2E2; color: #E64A19; }"
+        )
+        self.btn_batch_delete_draw.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_batch_delete_draw.clicked.connect(self._on_batch_delete_draw_clicked)
+        reset_row.addWidget(self.btn_batch_delete_draw)
+        self.btn_batch_delete_draw.hide()
 
         lower_widget = QWidget()
         lower_layout = QVBoxLayout(lower_widget)
@@ -1238,10 +1257,25 @@ class LayerDockWidget(QWidget):
         idx = draw_index
         popup = self.popup
 
+        def _sync_area_labels_to_parent(objs, parent_idx, attr, value):
+            o = objs[parent_idx] if 0 <= parent_idx < len(objs) else None
+            if not o or getattr(o, "type", "") != "polygon":
+                return
+            pid = getattr(o, "id", None)
+            if not pid:
+                return
+            for child in objs:
+                if (
+                    getattr(child, "type", "") == "area_label"
+                    and getattr(child, "parent_id", None) == pid
+                ):
+                    setattr(child, attr, value)
+
         def on_eye_toggled(checked):
             objs = popup._get_current_draw_objects()
             if 0 <= idx < len(objs):
                 objs[idx].visible = checked
+                _sync_area_labels_to_parent(objs, idx, "visible", checked)
                 if hasattr(popup, "_redraw_draw_layer"):
                     popup._redraw_draw_layer()
                 self.update_draw_layer_list(objs)
@@ -1250,6 +1284,7 @@ class LayerDockWidget(QWidget):
             objs = popup._get_current_draw_objects()
             if 0 <= idx < len(objs):
                 objs[idx].semi = checked
+                _sync_area_labels_to_parent(objs, idx, "semi", checked)
                 if hasattr(popup, "_redraw_draw_layer"):
                     popup._redraw_draw_layer()
                 self.update_draw_layer_list(objs)
@@ -1273,6 +1308,7 @@ class LayerDockWidget(QWidget):
             objs = popup._get_current_draw_objects()
             if 0 <= idx < len(objs):
                 objs[idx].locked = checked
+                _sync_area_labels_to_parent(objs, idx, "locked", checked)
 
         row._click_forwarder = _RowClickForwarder(on_name_clicked, col_name)
         col_name.installEventFilter(row._click_forwarder)
@@ -1490,19 +1526,33 @@ class LayerDockWidget(QWidget):
         to_remove = sorted(self._selected_draw_indices, reverse=True)
         if not to_remove:
             return
+        removed_parent_ids = {
+            getattr(objs[i], "id", None)
+            for i in to_remove
+            if 0 <= i < len(objs) and getattr(objs[i], "type", "") == "polygon"
+        }
+        removed_parent_ids.discard(None)
         min_idx = min(to_remove)
         for i in to_remove:
             if 0 <= i < len(objs):
                 objs.pop(i)
-        self.popup._set_current_draw_objects(objs)
-        if objs:
-            new_idx = min(min_idx, len(objs) - 1)
+        new_list = [
+            o
+            for o in objs
+            if not (
+                getattr(o, "type", "") == "area_label"
+                and getattr(o, "parent_id", None) in removed_parent_ids
+            )
+        ]
+        self.popup._set_current_draw_objects(new_list)
+        if new_list:
+            new_idx = min(min_idx, len(new_list) - 1)
             self._selected_draw_indices = {new_idx}
         else:
             self._selected_draw_indices = set()
         if hasattr(self.popup, "_redraw_draw_layer"):
             self.popup._redraw_draw_layer()
-        self.update_draw_layer_list(objs)
+        self.update_draw_layer_list(new_list)
         self._draw_list_placeholder.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _update_draw_global_row_state(self):
@@ -1842,6 +1892,7 @@ class LayerDockWidget(QWidget):
         if index == 1:
             self.btn_reset_order.hide()
             self.btn_reset_layers.hide()
+            self.btn_batch_delete_draw.show()
             self._draw_list_placeholder.setFocus(Qt.FocusReason.OtherFocusReason)
             self._selected_vowels = set()
             for r in self._layer_rows.values():
@@ -1854,6 +1905,7 @@ class LayerDockWidget(QWidget):
         else:
             self.btn_reset_order.show()
             self.btn_reset_layers.show()
+            self.btn_batch_delete_draw.hide()
             self.vowel_design_container.show()
 
     def update_draw_layer_list(self, draw_objects):
@@ -2134,6 +2186,33 @@ class LayerDockWidget(QWidget):
             self._reset_layers_for_current_file()
         else:
             self._reset_draw_layers()
+
+    def _on_batch_delete_draw_clicked(self):
+        """일괄 삭제: locked가 False인 그리기 객체만 제거. 잠금된 객체와 그 자식(area_label 등)은 유지."""
+        objs = self.popup._get_current_draw_objects()
+        if not objs:
+            return
+        keep_ids = {
+            getattr(o, "id", None)
+            for o in objs
+            if getattr(o, "locked", False) and getattr(o, "type", "") == "polygon"
+        }
+        keep_ids.discard(None)
+        new_list = [
+            o
+            for o in objs
+            if getattr(o, "locked", False)
+            or (
+                getattr(o, "type", "") == "area_label"
+                and getattr(o, "parent_id", None) in keep_ids
+            )
+        ]
+        self.popup._set_current_draw_objects(new_list)
+        self._selected_draw_indices = set()
+        if hasattr(self.popup, "_redraw_draw_layer"):
+            self.popup._redraw_draw_layer()
+        self.update_draw_layer_list(new_list)
+        self._draw_list_placeholder.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _reset_draw_order(self):
         """그리기 탭 순서 초기화. 추후 _draw_layer_rows 등 연동 시 구현."""

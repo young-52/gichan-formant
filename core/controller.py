@@ -1470,6 +1470,20 @@ class MainController:
                     self.set_last_save_dir(os.path.dirname(file_path))
                 except Exception:
                     pass
+                # 캡처 직전 미확정 프리뷰 제거 (눈금자 선, 그리기 툴 마커 등)
+                if self.ruler_tool.active:
+                    self.ruler_tool.clear_all()
+                if parent_window:
+                    if getattr(parent_window, "_draw_tool", None) is not None:
+                        try:
+                            parent_window._draw_tool.cancel()
+                        except Exception:
+                            pass
+                    if getattr(parent_window, "canvas", None) is not None:
+                        try:
+                            parent_window.canvas.draw()
+                        except Exception:
+                            pass
                 figure.set_size_inches(6.5, 6.5)
                 if fmt.lower() == "png":
                     figure.savefig(file_path, format="png", dpi=300, transparent=True)
