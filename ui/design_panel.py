@@ -150,7 +150,11 @@ class ColorPalette(QWidget):
             "#009688",
             "#FF9800",
         ]
-        # [기본색] + [투명(옵션)] + [프리셋]: default_color가 프리셋에 없어도 0번, allow_transparent면 기본색 바로 뒤에 투명 버튼
+        # [기본색] + [투명(옵션)] + [프리셋]
+        # - 기본색이 transparent이고 allow_transparent=True면 transparent를 맨 앞에 둔다.
+        transparent_first = (
+            self.allow_transparent and self.current_color == "transparent"
+        )
         if self.current_color and self.current_color not in ("transparent", "custom"):
             if self.current_color in preset_colors:
                 preset_colors = [c for c in preset_colors if c != self.current_color]
@@ -159,8 +163,14 @@ class ColorPalette(QWidget):
             c_name = self.color_names.get(c, "Color")
             btn = ColorCircleButton(c, tooltip=f"{c_name} ({c})")
             btn.clicked.connect(lambda checked, col=c: self.set_color(col))
+            if i == 0 and transparent_first:
+                btn_none = ColorCircleButton(
+                    "transparent", is_transparent=True, tooltip="Transparent"
+                )
+                btn_none.clicked.connect(lambda: self.set_color("transparent"))
+                btn_list.append(btn_none)
             btn_list.append(btn)
-            if i == 0 and self.allow_transparent:
+            if i == 0 and self.allow_transparent and not transparent_first:
                 btn_none = ColorCircleButton(
                     "transparent", is_transparent=True, tooltip="Transparent"
                 )
@@ -426,7 +436,7 @@ class DesignSettingsPanel(QWidget):
         color_layout.setSpacing(6)
         color_layout.addWidget(QLabel("라벨 텍스트 색상:", font=font_normal))
         self.lbl_color_picker = ColorPalette(
-            default_color="#E64A19", allow_transparent=True, parent=self
+            default_color="#000000", allow_transparent=True, parent=self
         )
         color_layout.addWidget(self.lbl_color_picker)
         label_group.addLayout(color_layout)
@@ -514,14 +524,6 @@ class DesignSettingsPanel(QWidget):
         label_collapse_content_layout = QVBoxLayout(label_collapse_content)
         label_collapse_content_layout.setContentsMargins(0, 0, 0, 0)
         label_collapse_content_layout.setSpacing(4)
-
-        # 구분선을 content 안으로 삽입하여 불필요한 위아래 이중 여백 제거
-        label_collapse_line = QFrame()
-        label_collapse_line.setFrameShape(QFrame.Shape.HLine)
-        label_collapse_line.setStyleSheet("color: #EBEEF5;")
-        label_collapse_line.setFixedHeight(1)
-        label_collapse_content_layout.addWidget(label_collapse_line)
-        self.label_collapse_line = label_collapse_line
 
         row_slash, self.sw_label_slash_wrap = self._create_toggle_row(
             "// 기호 씌우기", default_checked=False
@@ -784,7 +786,7 @@ class DesignSettingsPanel(QWidget):
         self.sw_show_centroid.setChecked(True)
         self.sw_show_axis_units.setChecked(False)
 
-        self.lbl_color_picker.set_color("#E64A19")
+        self.lbl_color_picker.set_color("#000000")
         self.combo_lbl_size.setCurrentText("20")
         self.btn_bold.setChecked(True)
         self.btn_italic.setChecked(False)

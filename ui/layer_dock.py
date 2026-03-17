@@ -23,31 +23,34 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import (
     Qt,
     pyqtSignal,
-    QPointF,
     QEvent,
-    QObject,
-    QMimeData,
-    QByteArray,
 )
-from PyQt6.QtGui import QFont, QFontMetrics, QPainter, QPen, QColor, QDrag
+from PyQt6.QtGui import QFont, QFontMetrics
 
-import json
-import os
 import config
 import app_logger
 from .layer_logic import (
-    LAYER_ROW_MIME_TYPE as _LAYER_ROW_MIME_TYPE,
-    DRAW_ROW_MIME_TYPE as _DRAW_ROW_MIME_TYPE,
     apply_global_eye,
     apply_global_semi,
+    apply_line_settings,
+    apply_polygon_settings,
+    apply_reference_settings,
+    rebuild_area_labels_for_polygons,
     toggle_item_visibility,
     compute_order_after_drop,
     get_children_indices,
-    sync_parent_lock_to_children,
 )
 from .design_panel import ColorPalette
 from .draw_design_panel import DrawDesignPanel
-from .display_utils import strip_gichan_prefix
+from .label_manager import LabelManager
+from .draw_manager import DrawManager
+from .layer_row_widgets import (
+    _RowClickForwarder,
+    _LayerRowFrame,
+    _DrawLayerRowFrame,
+)
+from .tab_label_view import create_label_tab
+from .tab_draw_view import create_draw_tab
 from .icon_widgets import (
     LinePreviewButton,
     MarkerShapeButton,
@@ -97,329 +100,6 @@ COLOR_NAMES = {
     "transparent": "Transparent",
     "custom": "Custom Color",
 }
-
-
-class _RowClickForwarder(QObject):
-    """행의 이름 열 등 빈 영역 클릭 시 선택 토글으로 전달."""
-
-    def __init__(self, callback, parent=None):
-        super().__init__(parent)
-        self._callback = callback
-
-    def eventFilter(self, obj, event):
-        if (
-            event.type() == QEvent.Type.MouseButtonPress
-            and event.button() == Qt.MouseButton.LeftButton
-        ):
-            if self._callback:
-                self._callback()
-        return False
-
-
-class _LayerRowFrame(QFrame):
-    """레이어 한 행용 프레임. 드래그로 순서 변경 가능."""
-
-    def __init__(self, dock, vowel, parent=None):
-        super().__init__(parent)
-        self._dock = dock
-        self._vowel = vowel
-        self._drag_start_pos_global = None
-        self._drag_start_pos_local = None
-        self._drag_pending = False
-        self.setAcceptDrops(False)
-
-    def register_drag_child(self, widget):
-        widget.installEventFilter(self)
-
-    def _build_drag_payload(self):
-        dock = self._dock
-        if self._vowel in dock._selected_vowels and len(dock._selected_vowels) > 1:
-            ordered = dock._get_ordered_vowels_for_display(
-                list(dock._layer_rows.keys())
-            )
-            drag_list = sorted(dock._selected_vowels, key=lambda v: ordered.index(v))
-            return json.dumps(drag_list).encode("utf-8")
-        return self._vowel.encode("utf-8")
-
-    def _start_drag(self):
-        self._drag_pending = False
-        mime = QMimeData()
-        mime.setData(_LAYER_ROW_MIME_TYPE, QByteArray(self._build_drag_payload()))
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        pix = self.grab()
-        drag.setPixmap(pix)
-        if self._drag_start_pos_local is not None:
-            drag.setHotSpot(self._drag_start_pos_local)
-        else:
-            drag.setHotSpot(QPointF(pix.width() / 2, pix.height() / 2).toPoint())
-        self._dock._hide_drop_indicator()
-        drag.exec(Qt.DropAction.MoveAction)
-        self._dock._hide_drop_indicator()
-
-    def eventFilter(self, obj, event):
-        if (
-            event.type() == QEvent.Type.MouseButtonPress
-            and event.button() == Qt.MouseButton.LeftButton
-        ):
-            self._drag_start_pos_global = event.globalPosition().toPoint()
-            self._drag_start_pos_local = self.mapFromGlobal(
-                event.globalPosition().toPoint()
-            )
-        elif (
-            event.type() == QEvent.Type.MouseMove
-            and self._drag_start_pos_global is not None
-        ):
-            if event.buttons() & Qt.MouseButton.LeftButton:
-                current_pos = event.globalPosition().toPoint()
-                if (current_pos - self._drag_start_pos_global).manhattanLength() >= 8:
-                    self._drag_start_pos_global = None
-                    self._start_drag()
-        return super().eventFilter(obj, event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_pos_global = event.globalPosition().toPoint()
-            self._drag_start_pos_local = event.position().toPoint()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drag_start_pos_global is None:
-            super().mouseMoveEvent(event)
-            return
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            super().mouseMoveEvent(event)
-            return
-        if (
-            event.globalPosition().toPoint() - self._drag_start_pos_global
-        ).manhattanLength() >= 8:
-            self._drag_start_pos_global = None
-            self._start_drag()
-        else:
-            super().mouseMoveEvent(event)
-
-
-class _LayerListDropArea(QWidget):
-    """레이어 목록 전체 영역에서 드롭 수락. 파란 선을 레이아웃 변형 없이 위에 덧그립니다."""
-
-    def __init__(self, dock, parent=None):
-        super().__init__(parent)
-        self._dock = dock
-        self.setAcceptDrops(True)
-        self.setStyleSheet("background: #FFFFFF;")
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if getattr(self._dock, "_drop_target", None) is not None:
-            vowel, after = self._dock._drop_target
-            row = self._dock._layer_rows.get(vowel)
-            if row:
-                rect = row.geometry()
-                y = rect.bottom() if after else rect.top()
-                painter = QPainter(self)
-                painter.setPen(QPen(QColor("#409EFF"), 3))
-                painter.drawLine(rect.left(), y, rect.right(), y)
-                painter.end()
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasFormat(_LAYER_ROW_MIME_TYPE):
-            event.acceptProposedAction()
-            self._update_indicator(event.position().toPoint())
-
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasFormat(_LAYER_ROW_MIME_TYPE):
-            event.acceptProposedAction()
-            self._update_indicator(event.position().toPoint())
-
-    def dragLeaveEvent(self, event):
-        self._dock._hide_drop_indicator()
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event):
-        if not event.mimeData().hasFormat(_LAYER_ROW_MIME_TYPE):
-            self._dock._hide_drop_indicator()
-            return
-        data = event.mimeData().data(_LAYER_ROW_MIME_TYPE)
-        if not data or data.isEmpty():
-            self._dock._hide_drop_indicator()
-            return
-        try:
-            raw = bytes(data).decode("utf-8")
-            dragged_list = json.loads(raw) if raw.startswith("[") else [raw]
-        except Exception:
-            self._dock._hide_drop_indicator()
-            return
-        vowel, after = self._dock._get_drop_target_at_pos(event.position().toPoint())
-        if vowel is not None and (len(dragged_list) > 1 or dragged_list[0] != vowel):
-            self._dock._on_layer_reorder(dragged_list, vowel, after=after)
-        else:
-            self._dock._hide_drop_indicator()
-        event.acceptProposedAction()
-
-    def _update_indicator(self, pos):
-        vowel, after = self._dock._get_drop_target_at_pos(pos)
-        if vowel is not None:
-            self._dock._set_drop_indicator_between(vowel, after)
-
-
-class _DrawLayerRowFrame(QFrame):
-    """그리기 레이어 한 행. 드래그로 순서 변경 가능."""
-
-    def __init__(self, dock, draw_index, parent=None):
-        super().__init__(parent)
-        self._dock = dock
-        self._draw_index = draw_index
-        self._drag_start_pos_global = None
-        self._drag_start_pos_local = None
-        self.setAcceptDrops(False)
-
-    def register_drag_child(self, widget):
-        widget.installEventFilter(self)
-
-    def _build_drag_payload(self):
-        dock = self._dock
-        sel = getattr(dock, "_selected_draw_indices", set())
-        if self._draw_index in sel and len(sel) > 1:
-            ordered = list(range(len(dock.popup._get_current_draw_objects())))
-            drag_list = sorted(sel, key=lambda i: ordered.index(i))
-            return json.dumps(drag_list).encode("utf-8")
-        return str(self._draw_index).encode("utf-8")
-
-    def _start_drag(self):
-        mime = QMimeData()
-        mime.setData(_DRAW_ROW_MIME_TYPE, QByteArray(self._build_drag_payload()))
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        pix = self.grab()
-        drag.setPixmap(pix)
-        if self._drag_start_pos_local is not None:
-            drag.setHotSpot(self._drag_start_pos_local)
-        else:
-            drag.setHotSpot(QPointF(pix.width() / 2, pix.height() / 2).toPoint())
-        self._dock._hide_draw_drop_indicator()
-        drag.exec(Qt.DropAction.MoveAction)
-        self._dock._hide_draw_drop_indicator()
-
-    def eventFilter(self, obj, event):
-        if (
-            event.type() == QEvent.Type.MouseButtonPress
-            and event.button() == Qt.MouseButton.LeftButton
-        ):
-            self._drag_start_pos_global = event.globalPosition().toPoint()
-            self._drag_start_pos_local = self.mapFromGlobal(
-                event.globalPosition().toPoint()
-            )
-        elif (
-            event.type() == QEvent.Type.MouseMove
-            and self._drag_start_pos_global is not None
-        ):
-            if event.buttons() & Qt.MouseButton.LeftButton:
-                current_pos = event.globalPosition().toPoint()
-                if (current_pos - self._drag_start_pos_global).manhattanLength() >= 8:
-                    self._drag_start_pos_global = None
-                    self._start_drag()
-        return super().eventFilter(obj, event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_pos_global = event.globalPosition().toPoint()
-            self._drag_start_pos_local = event.position().toPoint()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drag_start_pos_global is None:
-            super().mouseMoveEvent(event)
-            return
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            super().mouseMoveEvent(event)
-            return
-        if (
-            event.globalPosition().toPoint() - self._drag_start_pos_global
-        ).manhattanLength() >= 8:
-            self._drag_start_pos_global = None
-            self._start_drag()
-        else:
-            super().mouseMoveEvent(event)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        # 그리기 레이어 선택 시 파란 선(Selection Indicator) — 라벨 레이어와 동일한 #4A90E2
-        if self.property("selected") in (True, "true"):
-            rect = self.rect()
-            painter = QPainter(self)
-            painter.setPen(QPen(QColor("#4A90E2"), 3))
-            painter.drawLine(rect.left(), rect.top(), rect.left(), rect.bottom())
-            painter.end()
-
-
-class _DrawListDropArea(QWidget):
-    """그리기 레이어 목록 드롭 영역. 파란 선으로 삽입 위치 표시."""
-
-    def __init__(self, dock, parent=None):
-        super().__init__(parent)
-        self._dock = dock
-        self.setAcceptDrops(True)
-        self.setStyleSheet("background: #FFFFFF;")
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if getattr(self._dock, "_draw_drop_target", None) is not None:
-            idx, after = self._dock._draw_drop_target
-            rows = getattr(self._dock, "_draw_layer_rows", None) or []
-            if 0 <= idx < len(rows):
-                row = rows[idx]
-                rect = row.geometry()
-                y = rect.bottom() if after else rect.top()
-                painter = QPainter(self)
-                painter.setPen(QPen(QColor("#409EFF"), 3))
-                painter.drawLine(rect.left(), y, rect.right(), y)
-                painter.end()
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasFormat(_DRAW_ROW_MIME_TYPE):
-            event.acceptProposedAction()
-            self._update_indicator(event.position().toPoint())
-
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasFormat(_DRAW_ROW_MIME_TYPE):
-            event.acceptProposedAction()
-            self._update_indicator(event.position().toPoint())
-
-    def dragLeaveEvent(self, event):
-        self._dock._hide_draw_drop_indicator()
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event):
-        if not event.mimeData().hasFormat(_DRAW_ROW_MIME_TYPE):
-            self._dock._hide_draw_drop_indicator()
-            return
-        data = event.mimeData().data(_DRAW_ROW_MIME_TYPE)
-        if not data or data.isEmpty():
-            self._dock._hide_draw_drop_indicator()
-            return
-        try:
-            raw = bytes(data).decode("utf-8")
-            dragged_list = json.loads(raw) if raw.startswith("[") else [int(raw)]
-            if not isinstance(dragged_list, list):
-                dragged_list = [dragged_list]
-        except Exception:
-            self._dock._hide_draw_drop_indicator()
-            return
-        target_idx, after = self._dock._get_draw_drop_target_at_pos(
-            event.position().toPoint()
-        )
-        if target_idx is not None and (
-            len(dragged_list) > 1 or dragged_list[0] != target_idx
-        ):
-            self._dock._on_draw_reorder(dragged_list, target_idx, after=after)
-        else:
-            self._dock._hide_draw_drop_indicator()
-        event.acceptProposedAction()
-
-    def _update_indicator(self, pos):
-        idx, after = self._dock._get_draw_drop_target_at_pos(pos)
-        if idx is not None:
-            self._dock._set_draw_drop_indicator_between(idx, after)
 
 
 def _draw_object_display_name(draw_objects, index):
@@ -505,6 +185,8 @@ def _create_visual_button_group(parent, options, default_idx):
 class LayerDockWidget(QWidget):
     filter_state_changed = pyqtSignal(dict)
     overrides_changed = pyqtSignal(dict)
+    label_filter_item_changed = pyqtSignal(str, str)
+    draw_item_state_changed = pyqtSignal(int, str, object)
     compare_switch_requested = pyqtSignal(
         int
     )  # compare 모드에서 파일 A(0)/B(1) 전환 요청
@@ -533,12 +215,16 @@ class LayerDockWidget(QWidget):
         self._file_a_name = file_a_name
         self._file_b_name = file_b_name
         self._get_default_design = get_default_design  # callable() -> dict | None
+        self.label_manager = LabelManager(self.popup, state_key=self._state_key)
+        self.draw_manager = DrawManager(self.popup)
         self._selected_vowels = set()
         self._layer_rows = {}
         self._updating = False
         self._semi_memory = {}
         self._draw_design_settings = {}
         self._setup_ui()
+        self.label_filter_item_changed.connect(self._on_label_filter_item_changed)
+        self.draw_item_state_changed.connect(self._on_draw_item_state_changed)
 
     def _setup_ui(self):
         root_layout = QVBoxLayout(self)
@@ -567,7 +253,7 @@ class LayerDockWidget(QWidget):
         color_layout.setSpacing(6)
         color_layout.addWidget(QLabel("라벨 텍스트 색상:", font=font_normal))
         self.lbl_color_picker = ColorPalette(
-            default_color="#FF0000",
+            default_color="#000000",
             allow_transparent=True,
             parent=self.vowel_design_container,
         )
@@ -707,133 +393,10 @@ class LayerDockWidget(QWidget):
         """
             % config.TAB_BAR_MIN_WIDTH_PX
         )
-        layer_tab = QWidget()
-        data_layout = QVBoxLayout(layer_tab)
-        data_layout.setContentsMargins(0, 0, 0, 0)
-
-        tab_underline = QFrame()
-        tab_underline.setFrameShape(QFrame.Shape.HLine)
-        tab_underline.setFixedHeight(1)
-        tab_underline.setStyleSheet(
-            "background-color: #E4E7ED; margin: 0; border: none;"
-        )
-        data_layout.addWidget(tab_underline)
-        data_layout.setSpacing(0)
-
-        # compare 모드: 레이어 목록(전체 눈/반투명 행) 바로 위에 파일 선택 행
-        self._compare_file_switch_row = None
-        self._compare_file_btn_a = None
-        self._compare_file_btn_b = None
-        self._compare_file_group = None
-        if self._compare_mode:
-            _max = 20  # 레이어 목록 위 파일 선택 버튼용 글자 수 제한
-
-            def _trunc(s):
-                return s if len(s) <= _max else s[: _max - 3] + "..."
-
-            name_a = os.path.splitext(self._file_a_name)[0]
-            name_b = os.path.splitext(self._file_b_name)[0]
-            btn_label_a = _trunc(strip_gichan_prefix(name_a))
-            btn_label_b = _trunc(strip_gichan_prefix(name_b))
-            self._compare_file_switch_row = QFrame()
-            self._compare_file_switch_row.setFixedHeight(32)
-            self._compare_file_switch_row.setStyleSheet(
-                "background-color: #F5F7FA; border-bottom: 1px solid #EBEEF5;"
-            )
-            switch_layout = QHBoxLayout(self._compare_file_switch_row)
-            switch_layout.setContentsMargins(0, 0, 0, 0)
-            switch_layout.setSpacing(0)
-            self._compare_file_btn_a = QPushButton(btn_label_a)
-            self._compare_file_btn_b = QPushButton(btn_label_b)
-            self._compare_file_btn_a.setCheckable(True)
-            self._compare_file_btn_b.setCheckable(True)
-            self._compare_file_group = QButtonGroup(self)
-            self._compare_file_group.addButton(self._compare_file_btn_a, 0)
-            self._compare_file_group.addButton(self._compare_file_btn_b, 1)
-            self._compare_file_btn_a.setChecked(True)
-            for btn in (self._compare_file_btn_a, self._compare_file_btn_b):
-                btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                btn.setFixedHeight(32)
-                btn.setSizePolicy(
-                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-                )
-                btn.setStyleSheet(
-                    "QPushButton { background: transparent; border: none; color: #606266; font-size: 11px; padding: 4px 2px; }"
-                    "QPushButton:checked { background: #E6F0F9; color: #409EFF; font-weight: bold; }"
-                    "QPushButton:hover:!checked { background: #EBEEF5; }"
-                )
-            switch_layout.addWidget(self._compare_file_btn_a, 1)
-            sep_v = QFrame()
-            sep_v.setFrameShape(QFrame.Shape.VLine)
-            sep_v.setFixedWidth(1)
-            sep_v.setStyleSheet("background-color: #E4E7ED; margin: 0; border: none;")
-            switch_layout.addWidget(sep_v)
-            switch_layout.addWidget(self._compare_file_btn_b, 1)
-            self._compare_file_group.buttonClicked.connect(
-                lambda b: self.compare_switch_requested.emit(
-                    self._compare_file_group.id(b)
-                )
-            )
-            data_layout.addWidget(self._compare_file_switch_row)
-
-        self.layer_scroll = QScrollArea()
-        self.layer_scroll.setWidgetResizable(True)
-        self.layer_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.layer_scroll.setStyleSheet(
-            "QScrollArea { border: none; background: #FFFFFF; }"
-        )
-
-        self._layer_list_widget = _LayerListDropArea(self)
-        self._layer_list_layout = QVBoxLayout(self._layer_list_widget)
-        self._layer_list_layout.setContentsMargins(0, 0, 0, 0)
-        self._layer_list_layout.setSpacing(0)
-        self._layer_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.layer_scroll.setWidget(self._layer_list_widget)
-        self._global_row = None  # 전체 눈/반투명 한 줄 (레이어 목록 위)
-        # 드래그 시 삽입 위치 미리 보기: 레이아웃 변형 없이 paintEvent에서 위에 덧그리기만 함.
-        self._drop_target = None
-        data_layout.addWidget(self.layer_scroll)
+        layer_tab = create_label_tab(self)
         self.tab_widget.addTab(layer_tab, "라벨")
 
-        draw_tab = QWidget()
-        draw_tab_layout = QVBoxLayout(draw_tab)
-        draw_tab_layout.setContentsMargins(0, 0, 0, 0)
-        draw_tab_layout.setSpacing(0)
-        draw_tab_underline = QFrame()
-        draw_tab_underline.setFrameShape(QFrame.Shape.HLine)
-        draw_tab_underline.setFixedHeight(1)
-        draw_tab_underline.setStyleSheet(
-            "background-color: #E4E7ED; margin: 0; border: none;"
-        )
-        draw_tab_layout.addWidget(draw_tab_underline)
-        self._draw_global_row = self._build_draw_global_row()
-        draw_tab_layout.addWidget(self._draw_global_row)
-        self._draw_layer_scroll = QScrollArea()
-        self._draw_layer_scroll.setWidgetResizable(True)
-        self._draw_layer_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._draw_layer_scroll.setStyleSheet(
-            "QScrollArea { border: none; background: #FFFFFF; }"
-        )
-        self._draw_list_placeholder = _DrawListDropArea(self)
-        self._draw_list_placeholder.setStyleSheet("background: #FFFFFF;")
-        self._draw_list_placeholder.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self._draw_drop_target = None
-        self._draw_layer_rows = []
-        self._selected_draw_indices = set()
-        self._draw_list_layout = QVBoxLayout(self._draw_list_placeholder)
-        self._draw_list_layout.setContentsMargins(0, 0, 0, 0)
-        self._draw_list_layout.setSpacing(0)
-        self._draw_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        draw_tab_layout.addWidget(self._draw_layer_scroll, 1)
-        self._draw_layer_scroll.setWidget(self._draw_list_placeholder)
-        self._draw_list_placeholder.installEventFilter(self)
-        # 그리기 탭 내 어느 위젯에 포커스가 있어도 Delete로 선택 항목 일괄 삭제되도록
-        draw_tab.installEventFilter(self)
+        draw_tab = create_draw_tab(self)
         self.tab_widget.addTab(draw_tab, "그리기")
         self.tab_widget.currentChanged.connect(self._on_layer_tab_index_changed)
 
@@ -972,28 +535,83 @@ class LayerDockWidget(QWidget):
         self.group_ell_style.buttonToggled.connect(on_ell_style_toggled)
 
     def _get_current_filter_state(self):
-        if self._state_key:
-            return getattr(self.popup, "vowel_filter_state_" + self._state_key, {})
-        return getattr(self.popup, "vowel_filter_state", {})
+        return self.label_manager.get_filter_state()
 
     def _set_filter_state(self, state):
-        if self._state_key:
-            setattr(self.popup, "vowel_filter_state_" + self._state_key, state)
-        else:
-            self.popup.vowel_filter_state = state
+        self.label_manager.set_filter_state(state)
         self.filter_state_changed.emit(state)
         self._update_global_row_state()
 
     def _get_layer_overrides(self):
-        if self._state_key:
-            return getattr(self.popup, "layer_design_overrides_" + self._state_key, {})
-        return getattr(self.popup, "layer_design_overrides", {})
+        return self.label_manager.get_layer_overrides()
 
     def _set_layer_overrides(self, overrides):
-        if self._state_key:
-            setattr(self.popup, "layer_design_overrides_" + self._state_key, overrides)
-        else:
-            self.popup.layer_design_overrides = overrides
+        self.label_manager.set_layer_overrides(overrides)
+
+    def _on_label_filter_item_changed(self, vowel: str, new_state: str):
+        """라벨 필터 델타 갱신: 단일 row 상태만 변경."""
+        st = self._get_current_filter_state()
+        st[vowel] = new_state
+        self._set_filter_state(st)
+        row = self._layer_rows.get(vowel)
+        if row is not None:
+            row.eye_btn.blockSignals(True)
+            row.semi_btn.blockSignals(True)
+            row.eye_btn.setChecked(new_state != "OFF")
+            row.semi_btn.setChecked(new_state == "SEMI")
+            row.eye_btn.blockSignals(False)
+            row.semi_btn.blockSignals(False)
+
+    def _get_draw_row_by_index(self, draw_index: int):
+        rows = getattr(self, "_draw_layer_rows", None) or []
+        for r in rows:
+            if getattr(r, "draw_index", None) == draw_index:
+                return r
+        return None
+
+    def _sync_draw_row_controls(self, draw_index: int, obj: object):
+        row = self._get_draw_row_by_index(draw_index)
+        if row is None:
+            return
+        if hasattr(row, "eye_btn"):
+            row.eye_btn.blockSignals(True)
+            row.eye_btn.setChecked(getattr(obj, "visible", True))
+            row.eye_btn.blockSignals(False)
+        if hasattr(row, "semi_btn"):
+            row.semi_btn.blockSignals(True)
+            row.semi_btn.setChecked(getattr(obj, "semi", False))
+            row.semi_btn.blockSignals(False)
+        if hasattr(row, "lock_btn"):
+            row.lock_btn.blockSignals(True)
+            row.lock_btn.setChecked(getattr(obj, "locked", False))
+            row.lock_btn.blockSignals(False)
+
+    def _on_draw_item_state_changed(self, draw_index: int, key: str, value: object):
+        """그리기 단일 항목 델타 갱신: 전체 리스트 재구성 없이 row 단위로 동기화."""
+        objs = self.draw_manager.get_draw_objects()
+        if not (0 <= draw_index < len(objs)):
+            return
+        obj = objs[draw_index]
+        if key not in ("visible", "semi", "locked"):
+            return
+
+        setattr(obj, key, value)
+
+        # polygon의 area_label 자식은 부모 visible/semi/locked를 동기화한다.
+        if getattr(obj, "type", "") == "polygon" and key in (
+            "visible",
+            "semi",
+            "locked",
+        ):
+            for child_idx in get_children_indices(objs, draw_index):
+                if 0 <= child_idx < len(objs):
+                    setattr(objs[child_idx], key, value)
+                    self._sync_draw_row_controls(child_idx, objs[child_idx])
+
+        self.draw_manager.set_draw_objects(objs)
+        self.draw_manager.redraw()
+        self._sync_draw_row_controls(draw_index, obj)
+        self._update_draw_global_row_state()
 
     def _build_global_row(self):
         """레이어 목록 위 한 줄: 전체 눈(가시성) + 전체 반투명만. 높이를 약간 낮게.
@@ -1137,7 +755,7 @@ class LayerDockWidget(QWidget):
 
         def on_eye():
             rows = getattr(self, "_draw_layer_rows", None) or []
-            objs = self.popup._get_current_draw_objects()
+            objs = self.draw_manager.get_draw_objects()
             if not rows or not objs:
                 return
             n = min(len(objs), len(rows))
@@ -1152,13 +770,13 @@ class LayerDockWidget(QWidget):
                     r.eye_btn.blockSignals(True)
                     r.eye_btn.setChecked(objs[i].visible)
                     r.eye_btn.blockSignals(False)
-            if hasattr(self.popup, "_redraw_draw_layer"):
-                self.popup._redraw_draw_layer()
+            self.draw_manager.set_draw_objects(objs)
+            self.draw_manager.redraw()
             self._update_draw_global_row_state()
 
         def on_semi():
             rows = getattr(self, "_draw_layer_rows", None) or []
-            objs = self.popup._get_current_draw_objects()
+            objs = self.draw_manager.get_draw_objects()
             if not rows or not objs:
                 return
             n = min(len(objs), len(rows))
@@ -1171,8 +789,8 @@ class LayerDockWidget(QWidget):
                     r.semi_btn.blockSignals(True)
                     r.semi_btn.setChecked(objs[i].semi)
                     r.semi_btn.blockSignals(False)
-            if hasattr(self.popup, "_redraw_draw_layer"):
-                self.popup._redraw_draw_layer()
+            self.draw_manager.set_draw_objects(objs)
+            self.draw_manager.redraw()
             self._update_draw_global_row_state()
 
         eye_btn.clicked.connect(on_eye)
@@ -1321,39 +939,12 @@ class LayerDockWidget(QWidget):
         row_vbox.addWidget(effects_container)
 
         idx = draw_index
-        popup = self.popup
-
-        def _sync_area_labels_to_parent(objs, parent_idx, attr, value):
-            o = objs[parent_idx] if 0 <= parent_idx < len(objs) else None
-            if not o or getattr(o, "type", "") != "polygon":
-                return
-            pid = getattr(o, "id", None)
-            if not pid:
-                return
-            for child in objs:
-                if (
-                    getattr(child, "type", "") == "area_label"
-                    and getattr(child, "parent_id", None) == pid
-                ):
-                    setattr(child, attr, value)
 
         def on_eye_toggled(checked):
-            objs = popup._get_current_draw_objects()
-            if 0 <= idx < len(objs):
-                objs[idx].visible = checked
-                _sync_area_labels_to_parent(objs, idx, "visible", checked)
-                if hasattr(popup, "_redraw_draw_layer"):
-                    popup._redraw_draw_layer()
-                self.update_draw_layer_list(objs)
+            self.draw_item_state_changed.emit(idx, "visible", bool(checked))
 
         def on_semi_toggled(checked):
-            objs = popup._get_current_draw_objects()
-            if 0 <= idx < len(objs):
-                objs[idx].semi = checked
-                _sync_area_labels_to_parent(objs, idx, "semi", checked)
-                if hasattr(popup, "_redraw_draw_layer"):
-                    popup._redraw_draw_layer()
-                self.update_draw_layer_list(objs)
+            self.draw_item_state_changed.emit(idx, "semi", bool(checked))
 
         def on_name_clicked():
             self._last_modifier = QApplication.keyboardModifiers()
@@ -1372,22 +963,7 @@ class LayerDockWidget(QWidget):
             self._on_draw_delete()
 
         def on_lock_toggled(checked):
-            objs = popup._get_current_draw_objects()
-            if 0 <= idx < len(objs):
-                objs[idx].locked = checked
-                sync_parent_lock_to_children(objs, idx, checked)
-                # 자식 인덱스를 objs 기준으로 받은 뒤, draw_index를 통해 행을 찾아 잠금 상태를 동기화
-                children_indices = get_children_indices(objs, idx)
-                rows = getattr(self, "_draw_layer_rows", None) or []
-                for child_idx in children_indices:
-                    for r in rows:
-                        if getattr(r, "draw_index", None) == child_idx and hasattr(
-                            r, "lock_btn"
-                        ):
-                            r.lock_btn.blockSignals(True)
-                            r.lock_btn.setChecked(checked)
-                            r.lock_btn.blockSignals(False)
-                            break
+            self.draw_item_state_changed.emit(idx, "locked", bool(checked))
 
         row._click_forwarder = _RowClickForwarder(on_name_clicked, col_name)
         col_name.installEventFilter(row._click_forwarder)
@@ -1447,7 +1023,7 @@ class LayerDockWidget(QWidget):
         compare_plot 이식 시에는 popup 대신 탭별 layer_order를 사용할 수 있도록 확장 가능.
         """
         vowels_set = set(vowels)
-        ordered = getattr(self.popup, "layer_order", None) or []
+        ordered = self.label_manager.get_layer_order()
         # 저장된 순서 중 현재 모음 집합에 포함되는 것만 유지
         stored = [v for v in ordered if v in vowels_set]
         if stored and set(stored) == vowels_set:
@@ -1493,7 +1069,7 @@ class LayerDockWidget(QWidget):
         if new_order is None:
             return
 
-        self.popup.layer_order = list(new_order)
+        self.label_manager.set_layer_order(list(new_order))
         self._hide_drop_indicator()
 
         # 1. 화면 새로고침 (에러나던 유령 함수를 지우고 정상 함수 사용)
@@ -1513,15 +1089,14 @@ class LayerDockWidget(QWidget):
         # 4. 다중 플롯 시그널 동기화 및 그래프 갱신
         if hasattr(self, "order_changed"):
             self.order_changed.emit(new_order)
-        if hasattr(self.popup, "on_apply"):
-            self.popup.on_apply()
+        self.label_manager.notify_apply()
 
     def _hide_draw_drop_indicator(self):
         self._draw_drop_target = None
         self._draw_list_placeholder.update()
 
     def _set_draw_drop_indicator_between(self, draw_index, after):
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if 0 <= draw_index < len(objs):
             self._draw_drop_target = (draw_index, after)
             self._draw_list_placeholder.update()
@@ -1543,7 +1118,7 @@ class LayerDockWidget(QWidget):
         return (last_idx, True)
 
     def _on_draw_reorder(self, dragged_indices, target_index, after=False):
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if not objs or target_index is None:
             return
         dragged_list = [objs[i] for i in sorted(dragged_indices) if 0 <= i < len(objs)]
@@ -1577,11 +1152,10 @@ class LayerDockWidget(QWidget):
                 if pid in child_by_parent:
                     reordered.extend(child_by_parent[pid])
 
-        self.popup._set_current_draw_objects(reordered)
+        self.draw_manager.set_draw_objects(reordered)
         self._hide_draw_drop_indicator()
         self._selected_draw_indices = set()
-        if hasattr(self.popup, "_redraw_draw_layer"):
-            self.popup._redraw_draw_layer()
+        self.draw_manager.redraw()
         self.update_draw_layer_list(reordered)
 
     def _toggle_select_draw_index(self, draw_index, name_btn):
@@ -1622,7 +1196,7 @@ class LayerDockWidget(QWidget):
         self._sync_draw_design_panel_to_selection()
 
     def _on_draw_delete(self):
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if not objs:
             return
         to_remove = sorted(self._selected_draw_indices, reverse=True)
@@ -1646,19 +1220,18 @@ class LayerDockWidget(QWidget):
                 and getattr(o, "parent_id", None) in removed_parent_ids
             )
         ]
-        self.popup._set_current_draw_objects(new_list)
+        self.draw_manager.set_draw_objects(new_list)
         if new_list:
             new_idx = min(min_idx, len(new_list) - 1)
             self._selected_draw_indices = {new_idx}
         else:
             self._selected_draw_indices = set()
-        if hasattr(self.popup, "_redraw_draw_layer"):
-            self.popup._redraw_draw_layer()
+        self.draw_manager.redraw()
         self.update_draw_layer_list(new_list)
         self._draw_list_placeholder.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _update_draw_global_row_state(self):
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         row = getattr(self, "_draw_global_row", None)
         if row is None or not objs:
             return
@@ -1826,38 +1399,11 @@ class LayerDockWidget(QWidget):
         lock_btn = LayerLockButton()
         lock_layout.addWidget(lock_btn)
 
-        if self._state_key:
-            locked_attr = "layer_locked_vowels_" + self._state_key
-            if not hasattr(self.popup, locked_attr):
-                setattr(self.popup, locked_attr, set())
-            locked_set = getattr(self.popup, locked_attr)
-            lock_btn.setChecked(vowel in locked_set)
+        locked_set = self.label_manager.get_locked_vowels_set()
+        lock_btn.setChecked(vowel in locked_set)
 
-            def on_lock_toggled(checked):
-                s = getattr(self.popup, locked_attr)
-                if checked:
-                    s.add(vowel)
-                else:
-                    s.discard(vowel)
-        else:
-            idx = getattr(
-                self.popup,
-                "current_idx",
-                getattr(self.popup.controller, "current_idx", 0),
-            )
-            by_file = getattr(self.popup, "layer_locked_vowels_by_file", None)
-            if by_file is None:
-                self.popup.layer_locked_vowels_by_file = {}
-                by_file = self.popup.layer_locked_vowels_by_file
-            locked_set = by_file.setdefault(idx, set())
-            lock_btn.setChecked(vowel in locked_set)
-
-            def on_lock_toggled(checked):
-                s = by_file.setdefault(idx, set())
-                if checked:
-                    s.add(vowel)
-                else:
-                    s.discard(vowel)
+        def on_lock_toggled(checked):
+            self.label_manager.set_locked_vowel(vowel, checked)
 
         lock_btn.toggled.connect(on_lock_toggled)
 
@@ -1888,16 +1434,15 @@ class LayerDockWidget(QWidget):
 
         # --- 시그널 함수 정의 ---
         def on_eye_toggled(checked):
-            st = self._get_current_filter_state()
-            st[vowel] = toggle_item_visibility(checked, semi_btn.isChecked())
-            self._set_filter_state(st)
+            new_state = toggle_item_visibility(checked, semi_btn.isChecked())
+            self.label_filter_item_changed.emit(vowel, new_state)
 
         def on_semi_toggled(checked):
             self._semi_memory[vowel] = checked
             if eye_btn.isChecked():
-                st = self._get_current_filter_state()
-                st[vowel] = toggle_item_visibility(True, checked)
-                self._set_filter_state(st)
+                self.label_filter_item_changed.emit(
+                    vowel, toggle_item_visibility(True, checked)
+                )
 
         def on_name_clicked():
             self._last_modifier = QApplication.keyboardModifiers()
@@ -2077,7 +1622,7 @@ class LayerDockWidget(QWidget):
             self._draw_design_panel.clear_selection()
             return
 
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if not objs:
             self._draw_design_panel.clear_selection()
             return
@@ -2136,7 +1681,7 @@ class LayerDockWidget(QWidget):
             settings["fill_color"] = getattr(obj, "fill_color", "#3366CC")
         elif layer_type == "reference":
             settings["line_style"] = getattr(obj, "line_style", "-") or "-"
-            settings["line_color"] = getattr(obj, "line_color", "#606060") or "#606060"
+            settings["line_color"] = getattr(obj, "line_color", "#AAAAAA") or "#AAAAAA"
 
         # UI 갱신 중 역참조 방지
         self._draw_design_panel.blockSignals(True)
@@ -2150,8 +1695,7 @@ class LayerDockWidget(QWidget):
     ) -> tuple[str, dict, list[str]]:
         """settings_for_apply를 실제 Draw Object들에 적용하고,
         base_type, summary용 settings, 실제로 변경된 레이어 ID 목록을 반환."""
-        popup = self.popup
-        objs = popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if not objs:
             return "", {}, []
 
@@ -2192,120 +1736,24 @@ class LayerDockWidget(QWidget):
             if lid:
                 target_layer_ids.append(lid)
 
-        def _apply_line(o, cfg):
-            # cfg에 있는 키만 객체에 반영. 없으면 기존 값 유지 (부분 설정 시 transparent 등으로 덮어쓰기 방지)
-            if "line_style" in cfg:
-                setattr(o, "line_style", (cfg.get("line_style") or "-"))
-            if "line_color" in cfg:
-                setattr(o, "line_color", cfg.get("line_color") or "#000000")
-
-        def _apply_polygon(o, cfg):
-            # cfg에 있는 키만 객체에 반영. 없으면 기존 값 유지 (외곽선만 리셋 시 fill_color가 None으로 덮어쓰이지 않도록)
-            if "border_style" in cfg:
-                setattr(o, "border_style", (cfg.get("border_style") or "-"))
-            if "border_color" in cfg:
-                setattr(o, "border_color", (cfg.get("border_color") or "#000000"))
-            if "fill_color" in cfg:
-                setattr(o, "fill_color", cfg.get("fill_color"))
-
-            # 넓이 텍스트 레이어 on/off: 데이터 모델(PolygonObject.show_area_label)에만 반영.
-            # AreaLabelObject 생성/제거는 모든 폴리곤을 한 번에 훑는 별도 단계에서 처리한다.
-            if "area_label_visible" in cfg:
-                setattr(o, "show_area_label", cfg.get("area_label_visible", False))
-
-        def _apply_reference(o, cfg):
-            if "line_style" in cfg:
-                setattr(o, "line_style", (cfg.get("line_style") or "-"))
-            if "line_color" in cfg:
-                color = cfg.get("line_color")
-                setattr(o, "line_color", (color or "#606060"))
-
-        def _rebuild_area_labels_for_all_polygons(all_objs: list[object]):
-            """모든 폴리곤의 show_area_label 상태를 기준으로 AreaLabelObject 목록을 일괄 재구성한다."""
-            if not all_objs:
-                return
-
-            # parent_id -> 기존 area_label 리스트 매핑
-            labels_by_parent: dict[str, list[object]] = {}
-            for obj in all_objs:
-                if getattr(obj, "type", "") == "area_label":
-                    pid = getattr(obj, "parent_id", None)
-                    if pid:
-                        labels_by_parent.setdefault(pid, []).append(obj)
-
-            from draw.draw_common import AreaLabelObject
-
-            desired_labels_by_parent: dict[str, list[object]] = {}
-            # 폴리곤 기준으로, 각 부모에 대해 유지/생성할 자식 목록 결정
-            for obj in all_objs:
-                if getattr(obj, "type", "") != "polygon":
-                    continue
-                pid = getattr(obj, "id", None)
-                if not pid:
-                    continue
-                if not getattr(obj, "show_area_label", False):
-                    desired_labels_by_parent[pid] = []
-                    continue
-
-                existing = labels_by_parent.get(pid, [])
-                if existing:
-                    desired_labels_by_parent[pid] = list(existing)
-                    continue
-
-                pts = getattr(obj, "points", None) or []
-                if len(pts) < 3:
-                    desired_labels_by_parent[pid] = []
-                    continue
-                xs = [p[0] for p in pts]
-                ys = [p[1] for p in pts]
-                cx = sum(xs) / len(xs)
-                cy = sum(ys) / len(ys)
-                try:
-                    val = polygon_area(pts)
-                except Exception:
-                    val = 0.0
-                lbl = AreaLabelObject(
-                    parent_id=pid,
-                    value=val,
-                    x=cx,
-                    y=cy,
-                    axis_units=getattr(obj, "axis_units", "Hz"),
-                    visible=getattr(obj, "visible", True),
-                    locked=getattr(obj, "locked", False),
-                    semi=getattr(obj, "semi", False),
-                )
-                desired_labels_by_parent[pid] = [lbl]
-
-            # 새 객체 리스트 구성: area_label은 모두 제거하고, 각 폴리곤 뒤에 desired_labels를 붙인다.
-            new_list: list[object] = []
-            for obj in all_objs:
-                if getattr(obj, "type", "") == "area_label":
-                    continue
-                new_list.append(obj)
-                if getattr(obj, "type", "") == "polygon":
-                    pid = getattr(obj, "id", None)
-                    if pid and pid in desired_labels_by_parent:
-                        new_list.extend(desired_labels_by_parent[pid])
-
-            all_objs.clear()
-            all_objs.extend(new_list)
-
         for i in target_indices:
             o = objs[i]
             t = getattr(o, "type", "")
             if t == "line":
-                _apply_line(o, settings_for_apply)
+                apply_line_settings(o, settings_for_apply)
             elif t == "polygon":
-                _apply_polygon(o, settings_for_apply)
+                apply_polygon_settings(o, settings_for_apply)
             elif t == "reference":
-                _apply_reference(o, settings_for_apply)
+                apply_reference_settings(o, settings_for_apply)
 
         # 폴리곤의 넓이 텍스트 레이어는 모든 폴리곤을 한 번에 훑으면서 AreaLabelObject를 재구성한다.
         if base_type == "polygon":
-            _rebuild_area_labels_for_all_polygons(objs)
+            rebuilt = rebuild_area_labels_for_polygons(objs)
+            objs.clear()
+            objs.extend(rebuilt)
 
-        popup._set_current_draw_objects(objs)
-        popup._redraw_draw_layer()
+        self.draw_manager.set_draw_objects(objs)
+        self.draw_manager.redraw()
         self.update_draw_layer_list(objs)
         return base_type, settings_for_summary, target_layer_ids
 
@@ -2369,14 +1817,14 @@ class LayerDockWidget(QWidget):
                         continue
                 clean_cfg[k] = v
         elif base_type == "reference":
-            # 참조선: 스타일은 기본값과 비교, 색상은 패널 기본값(#606060)과 비교하여 필터링
+            # 참조선: 스타일은 기본값과 비교, 색상은 패널 기본값(#AAAAAA)과 비교하여 필터링
             base_style = defaults.get("draw_ref_line_style", "-") or "-"
-            base_color = defaults.get("draw_ref_line_color", "#606060") or "#606060"
+            base_color = defaults.get("draw_ref_line_color", "#AAAAAA") or "#AAAAAA"
             for k, v in settings_for_summary.items():
                 if k == "line_style" and (v or "-") == base_style:
                     continue
                 if k == "line_color":
-                    if str(v or "#606060").lower() == str(base_color).lower():
+                    if str(v or "#AAAAAA").lower() == str(base_color).lower():
                         continue
                 clean_cfg[k] = v
         else:
@@ -2428,7 +1876,7 @@ class LayerDockWidget(QWidget):
                 v = next(iter(self._selected_vowels))
                 o = overrides.get(v, {})
                 self.lbl_color_picker.set_color(
-                    o.get("lbl_color", ds.get("lbl_color", "#FF0000"))
+                    o.get("lbl_color", ds.get("lbl_color", "#000000"))
                 )
                 idx = MARKER_IDS.get(
                     o.get("centroid_marker", ds.get("centroid_marker", "o")), 0
@@ -2459,7 +1907,7 @@ class LayerDockWidget(QWidget):
                     o.get("ell_fill_color") or ds.get("ell_fill_color") or "transparent"
                 )
             else:
-                self.lbl_color_picker.set_color(ds.get("lbl_color", "#FF0000"))
+                self.lbl_color_picker.set_color(ds.get("lbl_color", "#000000"))
                 self.group_centroid_marker.button(0).setChecked(True)
                 self.group_ell_thick.button(1).setChecked(True)
                 self.group_ell_style.button(2).setChecked(True)
@@ -2568,21 +2016,10 @@ class LayerDockWidget(QWidget):
                             if no:
                                 new_overrides[v_key] = no
                     self._set_layer_overrides(new_overrides)
-                    if not self._state_key:
-                        idx = getattr(
-                            getattr(self.popup, "controller", None), "current_idx", None
-                        )
-                        if idx is not None and hasattr(
-                            self.popup, "layer_design_overrides_by_file"
-                        ):
-                            self.popup.layer_design_overrides_by_file[idx] = {
-                                v_key: dict(o_dict)
-                                for v_key, o_dict in new_overrides.items()
-                            }
+                    self.label_manager.sync_overrides_by_current_file(new_overrides)
                     self.overrides_changed.emit(new_overrides)
                     self._rebuild_effects()
-                    if hasattr(self.popup, "on_apply"):
-                        self.popup.on_apply()
+                    self.label_manager.notify_apply()
 
                 x_btn.clicked.connect(remove_key)
                 eff_row.addWidget(x_btn)
@@ -2596,7 +2033,7 @@ class LayerDockWidget(QWidget):
         rows = getattr(self, "_draw_layer_rows", None) or []
         if not rows:
             return
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if not objs:
             return
         font_effect = QFont(self.ui_font_name, 8)
@@ -2686,61 +2123,7 @@ class LayerDockWidget(QWidget):
                 row.effects_layout.addWidget(w)
 
     def _reset_layers_for_current_file(self):
-        if self._state_key:
-            locked_set = getattr(
-                self.popup, "layer_locked_vowels_" + self._state_key, set()
-            )
-            ov_attr = "layer_design_overrides_" + self._state_key
-            st_attr = "vowel_filter_state_" + self._state_key
-            current_ov = getattr(self.popup, ov_attr, {}) or {}
-            current_st = getattr(self.popup, st_attr, {}) or {}
-            setattr(
-                self.popup,
-                ov_attr,
-                {v: dict(ov) for v, ov in current_ov.items() if v in locked_set},
-            )
-            setattr(
-                self.popup,
-                st_attr,
-                {v: st for v, st in current_st.items() if v in locked_set},
-            )
-        else:
-            idx = getattr(
-                self.popup,
-                "current_idx",
-                getattr(self.popup.controller, "current_idx", None),
-            )
-            if idx is None:
-                return
-            locked_set = getattr(self.popup, "layer_locked_vowels_by_file", {}).get(
-                idx, set()
-            )
-            self.popup.layer_design_overrides = {
-                v: dict(ov)
-                for v, ov in (self.popup.layer_design_overrides or {}).items()
-                if v in locked_set
-            }
-            if hasattr(self.popup, "layer_design_overrides_by_file"):
-                self.popup.layer_design_overrides_by_file[idx] = {
-                    v: dict(ov)
-                    for v, ov in (
-                        self.popup.layer_design_overrides_by_file.get(idx) or {}
-                    ).items()
-                    if v in locked_set
-                }
-            self.popup.vowel_filter_state = {
-                v: st
-                for v, st in (self.popup.vowel_filter_state or {}).items()
-                if v in locked_set
-            }
-            if hasattr(self.popup, "vowel_filter_state_by_file"):
-                self.popup.vowel_filter_state_by_file[idx] = {
-                    v: st
-                    for v, st in (
-                        self.popup.vowel_filter_state_by_file.get(idx) or {}
-                    ).items()
-                    if v in locked_set
-                }
+        locked_set = self.label_manager.prune_to_locked_only_for_current_file()
 
         for v in list(self._semi_memory.keys()):
             if v not in locked_set:
@@ -2750,8 +2133,7 @@ class LayerDockWidget(QWidget):
         self._rebuild_effects()
         self.set_vowels(vowel_names)
         app_logger.info(config.LOG_MSG["LAYER_SETTINGS_RESET"])
-        if hasattr(self.popup, "on_apply"):
-            self.popup.on_apply()
+        self.label_manager.notify_apply()
 
     def _on_reset_order_clicked(self):
         """순서 초기화 버튼: 현재 탭에 따라 레이어/그리기 순서 초기화."""
@@ -2769,7 +2151,7 @@ class LayerDockWidget(QWidget):
 
     def _on_batch_delete_draw_clicked(self):
         """일괄 삭제: locked가 False인 그리기 객체만 제거. 잠금된 객체와 그 자식(area_label 등)은 유지."""
-        objs = self.popup._get_current_draw_objects()
+        objs = self.draw_manager.get_draw_objects()
         if not objs:
             return
         keep_ids = {
@@ -2787,10 +2169,9 @@ class LayerDockWidget(QWidget):
                 and getattr(o, "parent_id", None) in keep_ids
             )
         ]
-        self.popup._set_current_draw_objects(new_list)
+        self.draw_manager.set_draw_objects(new_list)
         self._selected_draw_indices = set()
-        if hasattr(self.popup, "_redraw_draw_layer"):
-            self.popup._redraw_draw_layer()
+        self.draw_manager.redraw()
         self.update_draw_layer_list(new_list)
         self._draw_list_placeholder.setFocus(Qt.FocusReason.OtherFocusReason)
 
@@ -2805,8 +2186,7 @@ class LayerDockWidget(QWidget):
     def _reset_layer_order(self):
         """레이어 표시 순서를 기본값(정렬)으로 초기화. 필터/디자인 설정은 그대로 유지."""
         # 전역 순서 저장소만 비우고, 현재 모음 목록을 다시 그리면 _get_ordered_vowels_for_display가 정렬 순서를 사용.
-        if hasattr(self.popup, "layer_order"):
-            self.popup.layer_order = []
+        self.label_manager.set_layer_order([])
         vowels = list(self._layer_rows.keys())
         self.set_vowels(vowels)
         if hasattr(self, "order_changed"):

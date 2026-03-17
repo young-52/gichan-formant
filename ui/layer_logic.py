@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
+from draw.draw_common import AreaLabelObject, polygon_area
 
 # -----------------------------------------------------------------------------
 # 상수 (layer_dock과 공유)
@@ -94,6 +95,102 @@ def compute_order_after_drop(
         new_order.insert(insert_idx, v)
         insert_idx += 1
     return new_order
+
+
+# -----------------------------------------------------------------------------
+# 그리기 디자인 설정 적용 (순수 데이터 매핑)
+# -----------------------------------------------------------------------------
+def apply_line_settings(obj: object, cfg: Dict[str, Any]) -> None:
+    """선 객체에 cfg의 키만 반영. 없는 키는 기존 값 유지."""
+    if "line_style" in cfg:
+        setattr(obj, "line_style", (cfg.get("line_style") or "-"))
+    if "line_color" in cfg:
+        setattr(obj, "line_color", cfg.get("line_color") or "#000000")
+
+
+def apply_polygon_settings(obj: object, cfg: Dict[str, Any]) -> None:
+    """폴리곤 객체에 cfg의 키만 반영. area_label_visible은 show_area_label로 매핑."""
+    if "border_style" in cfg:
+        setattr(obj, "border_style", (cfg.get("border_style") or "-"))
+    if "border_color" in cfg:
+        setattr(obj, "border_color", (cfg.get("border_color") or "#000000"))
+    if "fill_color" in cfg:
+        setattr(obj, "fill_color", cfg.get("fill_color"))
+    if "area_label_visible" in cfg:
+        setattr(obj, "show_area_label", cfg.get("area_label_visible", False))
+
+
+def apply_reference_settings(obj: object, cfg: Dict[str, Any]) -> None:
+    """참조선 객체에 cfg의 키만 반영. line_color는 None일 때 기본값 사용."""
+    if "line_style" in cfg:
+        setattr(obj, "line_style", (cfg.get("line_style") or "-"))
+    if "line_color" in cfg:
+        color = cfg.get("line_color")
+        setattr(obj, "line_color", (color or "#AAAAAA"))
+
+
+def rebuild_area_labels_for_polygons(all_objs: List[object]) -> List[object]:
+    """polygon.show_area_label 상태를 기준으로 area_label 목록을 재구성한 새 리스트 반환."""
+    if not all_objs:
+        return []
+
+    labels_by_parent: Dict[str, List[object]] = {}
+    for obj in all_objs:
+        if getattr(obj, "type", "") == "area_label":
+            pid = getattr(obj, "parent_id", None)
+            if pid:
+                labels_by_parent.setdefault(pid, []).append(obj)
+
+    desired_labels_by_parent: Dict[str, List[object]] = {}
+    for obj in all_objs:
+        if getattr(obj, "type", "") != "polygon":
+            continue
+        pid = getattr(obj, "id", None)
+        if not pid:
+            continue
+        if not getattr(obj, "show_area_label", False):
+            desired_labels_by_parent[pid] = []
+            continue
+
+        existing = labels_by_parent.get(pid, [])
+        if existing:
+            desired_labels_by_parent[pid] = list(existing)
+            continue
+
+        pts = getattr(obj, "points", None) or []
+        if len(pts) < 3:
+            desired_labels_by_parent[pid] = []
+            continue
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        cx = sum(xs) / len(xs)
+        cy = sum(ys) / len(ys)
+        try:
+            val = polygon_area(pts)
+        except Exception:
+            val = 0.0
+        lbl = AreaLabelObject(
+            parent_id=pid,
+            value=val,
+            x=cx,
+            y=cy,
+            axis_units=getattr(obj, "axis_units", "Hz"),
+            visible=getattr(obj, "visible", True),
+            locked=getattr(obj, "locked", False),
+            semi=getattr(obj, "semi", False),
+        )
+        desired_labels_by_parent[pid] = [lbl]
+
+    new_list: List[object] = []
+    for obj in all_objs:
+        if getattr(obj, "type", "") == "area_label":
+            continue
+        new_list.append(obj)
+        if getattr(obj, "type", "") == "polygon":
+            pid = getattr(obj, "id", None)
+            if pid and pid in desired_labels_by_parent:
+                new_list.extend(desired_labels_by_parent[pid])
+    return new_list
 
 
 # -----------------------------------------------------------------------------

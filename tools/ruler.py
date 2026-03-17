@@ -104,16 +104,7 @@ class RulerTool:
             self._kdtree = cKDTree(pts_px)
 
     def _font_family_from_design(self, design_settings=None):
-        """세리프/산세리프 설정에 따라 눈금자 거리·툴팁 텍스트용 폰트 패밀리 (IPA 불필요, 한·영 기준)."""
-        if not design_settings:
-            return ["DejaVu Sans", self.ui_font_name]
-        if design_settings.get("font_style") == "serif":
-            return [
-                "Times New Roman",
-                "Noto Serif KR",
-                "DejaVu Serif",
-                self.ui_font_name,
-            ]
+        """눈금자 거리·툴팁 텍스트용 폰트 패밀리. 항상 산세리프를 사용."""
         return ["Arial", "Noto Sans KR", "DejaVu Sans", self.ui_font_name]
 
     def set_context(self, canvas, ax, params, snapping_data=None, design_settings=None):

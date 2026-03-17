@@ -30,7 +30,26 @@ def format_ref_label(value: float, unit: str) -> str:
     return f"  {int(value)}"
 
 
-def round_ref_value(plot_coord: float, scale: str, unit: str | None = None) -> float:
+def _plot_coord_to_data_value(
+    plot_coord: float, scale: str, unit: str | None = None
+) -> float:
+    """plot 좌표를 단위(Unit) 기준 데이터 값으로 변환(반올림 없음)."""
+    u = (unit or "").strip().lower() if unit else ""
+    s = (scale or "linear").strip().lower()
+    if s == "bark" and u in ("hz",):
+        try:
+            return float(bark_to_hz(plot_coord))
+        except Exception:
+            return float(plot_coord)
+    return float(plot_coord)
+
+
+def round_ref_value(
+    plot_coord: float,
+    scale: str,
+    unit: str | None = None,
+    extra_snap_values: list[float] | None = None,
+) -> float:
     """plot_coord(Matplotlib 축 좌표)를 단위(Unit) 기준 데이터 값으로 변환·스냅하여 반환.
     반환값은 항상 사용자 눈금 단위(Hz/Bark/norm) 기준의 순수 데이터 값.
     - unit norm: plot_coord 그대로 소수 둘째 자리 스냅
@@ -40,17 +59,30 @@ def round_ref_value(plot_coord: float, scale: str, unit: str | None = None) -> f
     """
     u = (unit or "").strip().lower() if unit else ""
     s = (scale or "linear").strip().lower()
+    raw_data_value = _plot_coord_to_data_value(plot_coord, s, u)
+
     if u == "norm":
-        return round(plot_coord, 2)
-    if s == "bark" and u in ("hz",):
-        try:
-            data_hz = float(bark_to_hz(plot_coord))
-            return round(data_hz / 10.0) * 10.0
-        except Exception:
-            return round(plot_coord, 1)
-    if s == "bark" and u in ("bk", "bark"):
-        return round(plot_coord, 1)
-    return round(plot_coord / 10.0) * 10.0
+        stepped = round(raw_data_value, 2)
+        tol = 0.01
+    elif s == "bark" and u in ("bk", "bark"):
+        stepped = round(raw_data_value, 1)
+        tol = 0.05
+    else:
+        stepped = round(raw_data_value / 10.0) * 10.0
+        tol = 5.0
+
+    if extra_snap_values:
+        valid_candidates = []
+        for v in extra_snap_values:
+            try:
+                valid_candidates.append(float(v))
+            except Exception:
+                continue
+        if valid_candidates:
+            nearest = min(valid_candidates, key=lambda v: abs(v - raw_data_value))
+            if abs(nearest - raw_data_value) <= tol:
+                return nearest
+    return stepped
 
 
 class DrawReferenceTool:
@@ -61,6 +93,7 @@ class DrawReferenceTool:
         canvas,
         ax,
         horizontal: bool,
+        snapping_data: list | None = None,
         x_unit: str = "Hz",
         y_unit: str = "Hz",
         x_scale: str = "linear",
@@ -81,6 +114,7 @@ class DrawReferenceTool:
         self.y_scale = (y_scale or "linear").strip().lower()
         self.x_name = (x_name or "F2").strip()
         self.y_name = (y_name or "F1").strip()
+        self.snapping_data = snapping_data or []
         self.on_complete = on_complete
         self.on_cancel = on_cancel
         self._font_family = font_family or ["DejaVu Sans", "Malgun Gothic"]
@@ -91,6 +125,9 @@ class DrawReferenceTool:
         self._cid_click = None
         self._cid_move = None
         self._cid_key = None
+        self._snap_candidates_h: list[float] = []
+        self._snap_candidates_v: list[float] = []
+        self._prepare_snap_candidates()
 
     def activate(self):
         self._connect()
@@ -161,6 +198,26 @@ class DrawReferenceTool:
         unit = self.y_unit if self.horizontal else self.x_unit
         return format_ref_label(value, unit)
 
+    def _prepare_snap_candidates(self):
+        """centroid(mean) 축 값을 단위 기준 데이터 값으로 변환해 스냅 후보로 준비."""
+        h_vals: list[float] = []
+        v_vals: list[float] = []
+        for pt in self.snapping_data or []:
+            if pt.get("type") != "mean":
+                continue
+            try:
+                py = float(pt.get("y"))
+                h_vals.append(_plot_coord_to_data_value(py, self.y_scale, self.y_unit))
+            except Exception:
+                pass
+            try:
+                px = float(pt.get("x"))
+                v_vals.append(_plot_coord_to_data_value(px, self.x_scale, self.x_unit))
+            except Exception:
+                pass
+        self._snap_candidates_h = h_vals
+        self._snap_candidates_v = v_vals
+
     def _get_ax(self):
         """현재 그려진 축 사용. figure.clear() 후 재그리기 시 axes[0]이 바뀌므로 매번 캔버스에서 가져옴."""
         if (
@@ -178,10 +235,20 @@ class DrawReferenceTool:
             return
         ax = event.inaxes
         if self.horizontal:
-            value = round_ref_value(event.ydata, self.y_scale, self.y_unit)
+            value = round_ref_value(
+                event.ydata,
+                self.y_scale,
+                self.y_unit,
+                extra_snap_values=self._snap_candidates_h,
+            )
             self._draw_preview(value, is_horizontal=True, ax=ax)
         else:
-            value = round_ref_value(event.xdata, self.x_scale, self.x_unit)
+            value = round_ref_value(
+                event.xdata,
+                self.x_scale,
+                self.x_unit,
+                extra_snap_values=self._snap_candidates_v,
+            )
             self._draw_preview(value, is_horizontal=False, ax=ax)
         if self.canvas:
             self.canvas.draw_idle()
@@ -256,12 +323,22 @@ class DrawReferenceTool:
         ):
             return
         if self.horizontal:
-            value = round_ref_value(event.ydata, self.y_scale, self.y_unit)
+            value = round_ref_value(
+                event.ydata,
+                self.y_scale,
+                self.y_unit,
+                extra_snap_values=self._snap_candidates_h,
+            )
             axis_units = self.y_unit
             axis_name = self.y_name
             axis_scale = self.y_scale
         else:
-            value = round_ref_value(event.xdata, self.x_scale, self.x_unit)
+            value = round_ref_value(
+                event.xdata,
+                self.x_scale,
+                self.x_unit,
+                extra_snap_values=self._snap_candidates_v,
+            )
             axis_units = self.x_unit
             axis_name = self.x_name
             axis_scale = self.x_scale

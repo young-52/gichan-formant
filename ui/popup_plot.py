@@ -2185,6 +2185,7 @@ class PlotPopup(QMainWindow):
                 self.canvas,
                 ax,
                 horizontal=(mode == DrawMode.REF_H),
+                snapping_data=snapping_data,
                 x_unit=x_unit,
                 y_unit=y_unit,
                 x_scale=x_scale,
@@ -2332,6 +2333,9 @@ class PlotPopup(QMainWindow):
         self.controller.refresh_plot(
             self.figure, self.canvas, self.range_widgets, self.lbl_info, self
         )
+        # 플롯 갱신으로 axes 인스턴스가 바뀔 수 있으므로, Draw 모드가 켜져 있으면
+        # 현재 선택 모드 도구를 새 axes에 즉시 재바인딩한다.
+        self._rebind_draw_tool_if_active()
         data_list = (
             getattr(self, "plot_data_snapshot", None)
             or self.controller.get_plot_data_list()
@@ -2342,6 +2346,16 @@ class PlotPopup(QMainWindow):
         # on_apply는 좌표/디자인/필터 등의 변경에 대한 플롯 갱신만 담당하고,
         # 레이어 도크(모음 목록) 재구성은 파일 전환 시점(_on_file_index_changed 등)에서만 수행한다.
         return True
+
+    def _rebind_draw_tool_if_active(self):
+        if not getattr(self, "btn_draw", None) or not self.btn_draw.isChecked():
+            return
+        if not getattr(self, "draw_indicator", None):
+            return
+        mode = self.draw_indicator.get_mode()
+        if mode is None:
+            return
+        self._on_draw_mode_changed(mode)
 
     def _on_range_apply_clicked(self):
         """좌표축 범위 '적용' 버튼 전용: 적용 성공 시에만 로그 기록."""

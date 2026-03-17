@@ -227,7 +227,7 @@ class DrawDesignPanel(QWidget):
         color_layout.setSpacing(6)
         color_layout.addWidget(QLabel("참조선 색상:", font=font_normal))
         color_picker = ColorPalette(
-            default_color="#606060", allow_transparent=False, parent=page
+            default_color="#AAAAAA", allow_transparent=False, parent=page
         )
         color_layout.addWidget(color_picker)
         layout.addLayout(color_layout)
