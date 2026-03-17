@@ -27,7 +27,7 @@ from PyQt6.QtGui import (
     QPixmap,
 )
 
-from .icon_widgets import (
+from ui.widgets.icon_widgets import (
     create_font_style_icon,
     create_raw_marker_icon,
     create_legend_icon_design,
@@ -35,12 +35,12 @@ from .icon_widgets import (
     MarkerShapeButton,
     ColorCircleButton,
 )
-from .display_utils import (
+from ui.widgets.display_utils import (
     truncate_display_name,
     MAX_DISPLAY_NAME_LEN,
     strip_gichan_prefix,
 )
-from . import layout_constants as lc
+import ui.widgets.layout_constants as lc
 
 
 class NoWheelComboBox(QComboBox):
@@ -436,7 +436,7 @@ class DesignSettingsPanel(QWidget):
         color_layout.setSpacing(6)
         color_layout.addWidget(QLabel("라벨 텍스트 색상:", font=font_normal))
         self.lbl_color_picker = ColorPalette(
-            default_color="#E64A19", allow_transparent=True, parent=self
+            default_color=config.COLOR_PRIMARY_RED, allow_transparent=True, parent=self
         )
         color_layout.addWidget(self.lbl_color_picker)
         label_group.addLayout(color_layout)
@@ -786,7 +786,7 @@ class DesignSettingsPanel(QWidget):
         self.sw_show_centroid.setChecked(True)
         self.sw_show_axis_units.setChecked(False)
 
-        self.lbl_color_picker.set_color("#E64A19")
+        self.lbl_color_picker.set_color(config.COLOR_PRIMARY_RED)
         self.combo_lbl_size.setCurrentText("20")
         self.btn_bold.setChecked(True)
         self.btn_italic.setChecked(False)
@@ -1142,10 +1142,16 @@ class CompareDesignSettingsPanel(QWidget):
         for series, ctrl in [("blue", self.ctrl_blue), ("red", self.ctrl_red)]:
             cfg = settings.get(series, {})
             ell_color = cfg.get("ell_color") or (
-                "#1976D2" if series == "blue" else "#E64A19"
+                config.COLOR_PRIMARY_BLUE
+                if series == "blue"
+                else config.COLOR_PRIMARY_RED
             )
             if ell_color == "transparent":
-                ell_color = "#1976D2" if series == "blue" else "#E64A19"
+                ell_color = (
+                    config.COLOR_PRIMARY_BLUE
+                    if series == "blue"
+                    else config.COLOR_PRIMARY_RED
+                )
             ell_style = cfg.get("ell_style", "-" if series == "blue" else "--")
             centroid_marker = cfg.get("centroid_marker", "o")
             if centroid_marker not in marker_map:
@@ -1410,13 +1416,13 @@ class CompareDesignSettingsPanel(QWidget):
             QTabBar::tab:selected {{ background: #FFFFFF; color: #303133; font-weight: bold; }}
         """)
 
-        # Blue (기준) 탭: 텍스트 및 선 디폴트 Blue(#1976D2), 실선('-')
+        # Blue (기준) 탭: 텍스트 및 선 디폴트 Blue, 실선('-')
         self.tab_blue, self.ctrl_blue = self._build_individual_tab(
-            "#1976D2", "-", "blue"
+            config.COLOR_PRIMARY_BLUE, "-", "blue"
         )
-        # Red (비교) 탭: 텍스트 및 선 디폴트 Red(#E64A19), 긴 점선('---')
+        # Red (비교) 탭: 텍스트 및 선 디폴트 Red, 긴 점선('---')
         self.tab_red, self.ctrl_red = self._build_individual_tab(
-            "#E64A19", "---", "red"
+            config.COLOR_PRIMARY_RED, "---", "red"
         )
 
         idx_blue = self.sub_tabs.addTab(
@@ -1507,10 +1513,17 @@ class CompareDesignSettingsPanel(QWidget):
             return c if c.isValid() else QColor(fallback)
 
         bar.setTabTextColor(
-            0, to_qcolor(self.ctrl_blue["ell_line_picker"].current_color, "#1976D2")
+            0,
+            to_qcolor(
+                self.ctrl_blue["ell_line_picker"].current_color,
+                config.COLOR_PRIMARY_BLUE,
+            ),
         )
         bar.setTabTextColor(
-            1, to_qcolor(self.ctrl_red["ell_line_picker"].current_color, "#E64A19")
+            1,
+            to_qcolor(
+                self.ctrl_red["ell_line_picker"].current_color, config.COLOR_PRIMARY_RED
+            ),
         )
 
     def _on_setting_changed(self, *args):
@@ -1544,25 +1557,25 @@ class CompareDesignSettingsPanel(QWidget):
         self.group_raw_marker_common.button(0).setChecked(True)
 
         # Blue 초기화
-        self.ctrl_blue["lbl_color_picker"].set_color("#1976D2")
+        self.ctrl_blue["lbl_color_picker"].set_color(config.COLOR_PRIMARY_BLUE)
         self.ctrl_blue["combo_lbl_size"].setCurrentText("20")
         self.ctrl_blue["btn_bold"].setChecked(True)
         self.ctrl_blue["btn_italic"].setChecked(False)
         self.ctrl_blue["group_centroid_marker"].button(0).setChecked(True)
         self.ctrl_blue["group_ell_thick"].button(1).setChecked(True)
         self.ctrl_blue["group_ell_style"].button(0).setChecked(True)  # 실선
-        self.ctrl_blue["ell_line_picker"].set_color("#1976D2")
+        self.ctrl_blue["ell_line_picker"].set_color(config.COLOR_PRIMARY_BLUE)
         self.ctrl_blue["ell_fill_picker"].set_color("transparent")
 
         # Red 초기화
-        self.ctrl_red["lbl_color_picker"].set_color("#E64A19")
+        self.ctrl_red["lbl_color_picker"].set_color(config.COLOR_PRIMARY_RED)
         self.ctrl_red["combo_lbl_size"].setCurrentText("20")
         self.ctrl_red["btn_bold"].setChecked(True)
         self.ctrl_red["btn_italic"].setChecked(False)
         self.ctrl_red["group_centroid_marker"].button(0).setChecked(True)
         self.ctrl_red["group_ell_thick"].button(1).setChecked(True)
         self.ctrl_red["group_ell_style"].button(1).setChecked(True)  # 긴 점선
-        self.ctrl_red["ell_line_picker"].set_color("#E64A19")
+        self.ctrl_red["ell_line_picker"].set_color(config.COLOR_PRIMARY_RED)
         self.ctrl_red["ell_fill_picker"].set_color("transparent")
 
         self._is_loading = False

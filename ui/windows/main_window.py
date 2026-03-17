@@ -657,6 +657,12 @@ class MainUI(QMainWindow):
         self.update_file_status(0)
         self._draw_preview()
 
+    def show_warning(self, title, text):
+        QMessageBox.warning(self, title, text)
+
+    def show_critical(self, title, text):
+        QMessageBox.critical(self, title, text)
+
     def _draw_preview(self, *args):
         if hasattr(self.controller, "update_live_preview"):
             self.controller.update_live_preview()

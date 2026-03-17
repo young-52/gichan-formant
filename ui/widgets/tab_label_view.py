@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import config
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -14,8 +15,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .display_utils import strip_gichan_prefix
-from .layer_row_widgets import _LayerListDropArea
+from ui.widgets.display_utils import strip_gichan_prefix
+from ui.widgets.layer_row_widgets import _LayerListDropArea
 
 
 def create_label_tab(dock) -> QWidget:
@@ -67,9 +68,9 @@ def create_label_tab(dock) -> QWidget:
             btn.setFixedHeight(32)
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             btn.setStyleSheet(
-                "QPushButton { background: transparent; border: none; color: #606266; font-size: 11px; padding: 4px 2px; }"
-                "QPushButton:checked { background: #E6F0F9; color: #409EFF; font-weight: bold; }"
-                "QPushButton:hover:!checked { background: #EBEEF5; }"
+                f"QPushButton {{ background: transparent; border: none; color: {config.COLOR_TEXT_SECONDARY}; font-size: 11px; padding: 4px 2px; }}"
+                f"QPushButton:checked {{ background: {config.COLOR_ACTION_HOVER_BG}; color: {config.COLOR_ACTION_BLUE}; font-weight: bold; }}"
+                f"QPushButton:hover:!checked {{ background: {config.COLOR_TAB_HOVER}; }}"
             )
         switch_layout.addWidget(dock._compare_file_btn_a, 1)
         sep_v = QFrame()

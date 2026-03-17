@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QFont, QCursor
 
-from .design_panel import ToggleSwitch, ColorPalette
-from .icon_widgets import LinePreviewButton, create_trajectory_icon
+from ui.widgets.design_panel import ToggleSwitch, ColorPalette
+from ui.widgets.icon_widgets import LinePreviewButton, create_trajectory_icon
 
 
 # design_panel / layer_dock 과 동일한 선 스타일 매핑을 사용한다.

@@ -21,6 +21,7 @@ class DrawLineTool:
         axis_units: str = "Hz",
         on_complete: Callable[[LineObject], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
+        font_family: list | None = None,
     ):
         self.canvas = canvas
         self.ax = ax
@@ -28,6 +29,7 @@ class DrawLineTool:
         self.axis_units = axis_units
         self.on_complete = on_complete
         self.on_cancel = on_cancel
+        self._font_family = font_family or ["DejaVu Sans", "Malgun Gothic"]
 
         self._points: list[tuple[float, float]] = []
         self._point_labels: list[str] = []
@@ -163,10 +165,19 @@ class DrawLineTool:
             zorder=300,
             clip_on=False,
         )
+        try:
+            self._tooltip_artist.set_fontfamily(self._font_family)
+        except Exception:
+            pass
 
     def _on_click(self, event):
         if event.inaxes is not self.ax or event.button != 1:
             return
+        try:
+            if self.canvas:
+                self.canvas.setFocus()
+        except Exception:
+            pass
         # 더블클릭 → 완료
         if event.dblclick:
             self._complete()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QScrollArea, QVBoxLayout, QWidget
 
-from .layer_row_widgets import _DrawListDropArea
+from ui.widgets.layer_row_widgets import _DrawListDropArea
 
 
 def create_draw_tab(dock) -> QWidget:

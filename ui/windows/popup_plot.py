@@ -19,6 +19,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QFormLayout,
     QTabWidget,
+    QFileDialog,
+    QProgressDialog,
 )
 from PyQt6.QtCore import Qt, QObject, QEvent
 
@@ -40,20 +42,20 @@ from PyQt6.QtGui import (
     QRegularExpressionValidator,
 )
 from PyQt6.QtCore import QRegularExpression
-from .canvas_fixed import FixedFigureCanvas
+from ui.widgets.canvas_fixed import FixedFigureCanvas
 
 from utils import icon_utils
 import config
 import app_logger
-from .filter_panel import LiveVowelFilterPanel
-from .design_panel import DesignSettingsPanel, NoWheelComboBox
-from .icon_widgets import BidirectionalArrowButton
-from .tool_indicator import ToolStatusIndicator
-from .layer_dock import LayerDockWidget
+from ui.widgets.filter_panel import LiveVowelFilterPanel
+from ui.widgets.design_panel import DesignSettingsPanel, NoWheelComboBox
+from ui.widgets.icon_widgets import BidirectionalArrowButton
+from ui.widgets.tool_indicator import ToolStatusIndicator
+from ui.widgets.layer_dock import LayerDockWidget
 from draw import DrawModeIndicator, DrawMode, draw_line, draw_polygon, draw_reference
 from draw.draw_common import polygon_area, AreaLabelObject
-from . import layout_constants as layout
-from .display_utils import format_file_label
+import ui.widgets.layout_constants as layout
+from ui.widgets.display_utils import format_file_label
 from utils.math_utils import hz_to_bark, bark_to_hz
 import matplotlib.colors as mcolors
 
@@ -284,7 +286,7 @@ class BatchSaveDialog(QDialog):
             "QPushButton { border-top-right-radius: 4px; border-bottom-right-radius: 4px; border-left: none; }",
         ]
         for i, (text, val) in enumerate(
-            [("JPG", "jpg"), ("PNG", "png"), ("EPS", "eps")]
+            [("JPG", "jpg"), ("PNG", "png"), ("SVG", "svg")]
         ):
             btn = QPushButton(text)
             btn.setCheckable(True)
@@ -350,16 +352,77 @@ class BatchSaveDialog(QDialog):
             else None
         )
 
-        # main.py가 업데이트되기 전에도 튕기지 않도록 파라미터 유무를 안전하게 검사합니다.
         sig_params = inspect.signature(
-            self.controller.batch_download_with_options
+            self.controller.create_batch_save_worker
         ).parameters
+
+        initial_dir = self.controller.get_default_batch_save_dir()
+        save_dir = QFileDialog.getExistingDirectory(
+            self, "일괄 저장할 폴더를 선택하세요", initial_dir
+        )
+        if not save_dir:
+            return
+
         if "design_settings" in sig_params:
-            self.controller.batch_download_with_options(
-                ranges, sigma, img_format, design_settings=design_settings
+            worker = self.controller.create_batch_save_worker(
+                save_dir, ranges, sigma, img_format, design_settings=design_settings
             )
         else:
-            self.controller.batch_download_with_options(ranges, sigma, img_format)
+            worker = self.controller.create_batch_save_worker(
+                save_dir, ranges, sigma, img_format
+            )
+
+        total = self.controller.get_plot_data_count()
+        progress_dialog = QProgressDialog(
+            "이미지 저장 중...", "취소", 0, total, parent_popup
+        )
+        progress_dialog.setWindowTitle("일괄 저장")
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        progress_dialog.setMinimumDuration(0)
+        progress_dialog.setValue(0)
+
+        def on_progress(current, tot):
+            progress_dialog.setValue(current)
+            progress_dialog.setLabelText(f"저장 중... ({current}/{tot})")
+
+        def on_finished(success_count):
+            progress_dialog.close()
+            errors = getattr(worker, "errors", [])
+            if success_count == 0 and errors:
+                sample = ", ".join(f"{name}: {msg}" for name, msg in errors[:3])
+                app_logger.warning(
+                    config.LOG_MSG["BATCH_ALL_FAILED"].format(
+                        fail_count=len(errors), sample=sample
+                    )
+                )
+                QMessageBox.warning(
+                    parent_popup,
+                    "일괄 저장 실패",
+                    config.LOG_MSG["BATCH_ALL_FAILED_BOX"],
+                )
+            else:
+                app_logger.info(
+                    config.LOG_MSG["BATCH_SUCCESS"].format(success_count=success_count)
+                )
+                QMessageBox.information(
+                    parent_popup,
+                    "일괄 저장 완료",
+                    f"총 {success_count}개의 이미지가 '{save_dir}'에 저장되었습니다.",
+                )
+
+        def on_log_error(msg):
+            app_logger.warning(msg)
+
+        worker.progress.connect(on_progress)
+        worker.finished_with_count.connect(on_finished)
+        worker.log_error.connect(on_log_error)
+        progress_dialog.canceled.connect(worker.terminate)
+
+        parent_popup._batch_worker = worker
+        parent_popup._batch_progress = progress_dialog
+
+        worker.start()
+        progress_dialog.show()
 
 
 class PlotPopup(QMainWindow):
@@ -1120,9 +1183,9 @@ class PlotPopup(QMainWindow):
         save_h.setSpacing(4)
         btn_jpg = QPushButton("JPG 저장")
         btn_png = QPushButton("PNG 저장")
-        btn_eps = QPushButton("EPS 저장")
+        btn_svg = QPushButton("SVG 저장")
 
-        for btn, fmt in zip([btn_jpg, btn_png, btn_eps], ["jpg", "png", "eps"]):
+        for btn, fmt in zip([btn_jpg, btn_png, btn_svg], ["jpg", "png", "svg"]):
             btn.setFixedHeight(34)
             btn.setFont(QFont(self.ui_font_name, 8))
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -1130,9 +1193,7 @@ class PlotPopup(QMainWindow):
                 "background-color: white; border: 1px solid #C0C4CC; border-radius: 4px;"
             )
             btn.clicked.connect(
-                lambda checked, f=fmt: self.controller.download_plot(
-                    self.figure, f, parent_window=self
-                )
+                lambda checked, f=fmt: self._on_download_plot(checked, f)
             )
             save_h.addWidget(btn)
         export_group.addLayout(save_h)
@@ -1243,7 +1304,9 @@ class PlotPopup(QMainWindow):
         QShortcut(
             QKeySequence(Qt.Key.Key_M), self, context=Qt.ShortcutContext.WindowShortcut
         ).activated.connect(self._safe_compare_click)
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._safe_save_jpg)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(
+            lambda: self._on_download_plot(False, "jpg")
+        )
 
         QShortcut(
             QKeySequence("Esc"), self, context=Qt.ShortcutContext.WindowShortcut
@@ -1251,17 +1314,17 @@ class PlotPopup(QMainWindow):
         QShortcut(
             QKeySequence(Qt.Key.Key_Return),
             self,
-            context=Qt.ShortcutContext.ApplicationShortcut,
+            context=Qt.ShortcutContext.WindowShortcut,
         ).activated.connect(self._safe_draw_complete)
         QShortcut(
             QKeySequence(Qt.Key.Key_Enter),
             self,
-            context=Qt.ShortcutContext.ApplicationShortcut,
+            context=Qt.ShortcutContext.WindowShortcut,
         ).activated.connect(self._safe_draw_complete)
         QShortcut(
             QKeySequence(QKeySequence.StandardKey.Undo),
             self,
-            context=Qt.ShortcutContext.ApplicationShortcut,
+            context=Qt.ShortcutContext.WindowShortcut,
         ).activated.connect(self._safe_draw_rollback)
         QShortcut(
             QKeySequence(Qt.Key.Key_P), self, context=Qt.ShortcutContext.WindowShortcut
@@ -1794,6 +1857,12 @@ class PlotPopup(QMainWindow):
         if self.canvas:
             self.canvas.draw_idle()
 
+    def show_warning(self, title, text):
+        QMessageBox.warning(self, title, text)
+
+    def show_critical(self, title, text):
+        QMessageBox.critical(self, title, text)
+
     def _redraw_draw_layer(self):
         if not self.figure.axes:
             return
@@ -1823,6 +1892,15 @@ class PlotPopup(QMainWindow):
                 return s
             # 알 수 없는 값이면 짧은 점선과 동일하게 처리
             return "--"
+
+        def _is_serif_font():
+            ds = getattr(self, "design_settings", None) or {}
+            if not isinstance(ds, dict):
+                return False
+            if ds.get("font_style") == "serif":
+                return True
+            common = ds.get("common", {})
+            return isinstance(common, dict) and common.get("font_style") == "serif"
 
         for obj in self._get_current_draw_objects():
             if not getattr(obj, "visible", True):
@@ -1890,7 +1968,6 @@ class PlotPopup(QMainWindow):
                             tip_d = tuple(inv((tx, ty)))
                             left_d = tuple(inv((lx, ly)))
                             right_d = tuple(inv((rx, ry)))
-                            base_d = tuple(inv((bx, by)))
 
                             if arrow_head == "open":
                                 # Open head: V자 head 두 선만 그림
@@ -1986,10 +2063,7 @@ class PlotPopup(QMainWindow):
                     else:
                         txt = str(int(round(v)))
                     font_family = ["DejaVu Sans", "Malgun Gothic"]
-                    if (
-                        getattr(self, "design_settings", None)
-                        and self.design_settings.get("font_style") == "serif"
-                    ):
+                    if _is_serif_font():
                         font_family = [
                             "Times New Roman",
                             "Noto Serif KR",
@@ -2038,10 +2112,7 @@ class PlotPopup(QMainWindow):
                 plot_v = v
             lbl = format_ref_label(v, axis_units)
             font_family = ["DejaVu Sans", "Malgun Gothic"]
-            if (
-                getattr(self, "design_settings", None)
-                and self.design_settings.get("font_style") == "serif"
-            ):
+            if _is_serif_font():
                 font_family = ["Times New Roman", "Noto Serif KR", "DejaVu Serif"]
             style = getattr(obj, "line_style", "-") or "-"
             color_override = getattr(obj, "line_color", None)
@@ -2309,6 +2380,7 @@ class PlotPopup(QMainWindow):
                 axis_units=y_unit,
                 on_complete=self._on_draw_object_complete,
                 on_cancel=_on_draw_cancel,
+                font_family=["DejaVu Sans", "Malgun Gothic"],
             )
         elif mode == DrawMode.POLYGON:
             self._draw_tool = draw_polygon.DrawPolygonTool(
@@ -2318,6 +2390,7 @@ class PlotPopup(QMainWindow):
                 axis_units=y_unit,
                 on_complete=self._on_draw_object_complete,
                 on_cancel=_on_draw_cancel,
+                font_family=["DejaVu Sans", "Malgun Gothic"],
             )
         elif mode in (DrawMode.REF_H, DrawMode.REF_V):
             self._draw_tool = draw_reference.DrawReferenceTool(
@@ -2436,10 +2509,29 @@ class PlotPopup(QMainWindow):
         # overrides 역시 LayerDockWidget에서 popup.layer_design_overrides에 반영된 상태.
         self.on_apply()
 
-    def _safe_save_jpg(self):
+    def _on_download_plot(self, checked, fmt):
         if self._is_input_focused():
             return
-        self.controller.download_plot(self.figure, "jpg", parent_window=self)
+        initial_path, _ = self.controller.get_default_save_path(fmt, self)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"플롯 이미지 저장({fmt.upper()})",
+            initial_path,
+            f"{fmt.upper()} Image (*.{fmt})",
+        )
+        if file_path:
+            try:
+                self.controller.save_plot_to_file(self.figure, file_path, fmt, self)
+                QMessageBox.information(
+                    self, "저장 완료", "이미지가 성공적으로 저장되었습니다."
+                )
+            except Exception as e:
+                import traceback
+
+                traceback.print_exc()
+                QMessageBox.critical(
+                    self, "저장 실패", f"저장 중 오류가 발생했습니다:\n{e}"
+                )
 
     def on_apply(self):
         self.setFocus()

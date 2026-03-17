@@ -24,6 +24,7 @@ class DrawPolygonTool:
         axis_units: str = "Hz",
         on_complete: Callable[[PolygonObject], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
+        font_family: list | None = None,
     ):
         self.canvas = canvas
         self.ax = ax
@@ -31,6 +32,7 @@ class DrawPolygonTool:
         self.axis_units = axis_units
         self.on_complete = on_complete
         self.on_cancel = on_cancel
+        self._font_family = font_family or ["DejaVu Sans", "Malgun Gothic"]
 
         self._points: list[tuple[float, float]] = []
         self._point_labels: list[str] = []
@@ -167,10 +169,19 @@ class DrawPolygonTool:
             zorder=300,
             clip_on=False,
         )
+        try:
+            self._tooltip_artist.set_fontfamily(self._font_family)
+        except Exception:
+            pass
 
     def _on_click(self, event):
         if event.inaxes is not self.ax or event.button != 1:
             return
+        try:
+            if self.canvas:
+                self.canvas.setFocus()
+        except Exception:
+            pass
         pt = snap_query(self.ax, self.snapping_data, event.x, event.y, max_dist_px=20)
         if pt is None:
             return
@@ -196,6 +207,8 @@ class DrawPolygonTool:
     def _on_key(self, event):
         if event.key == "escape":
             self._clear_current()
+        elif event.key == "enter" or event.key == "return":
+            self.complete()
         elif event.key == "ctrl+z":
             if self._points:
                 self._points.pop()

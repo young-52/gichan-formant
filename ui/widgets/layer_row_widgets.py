@@ -6,7 +6,7 @@ from PyQt6.QtCore import QByteArray, QEvent, QMimeData, QObject, QPointF, Qt
 from PyQt6.QtGui import QColor, QDrag, QPainter, QPen
 from PyQt6.QtWidgets import QFrame, QWidget
 
-from .layer_logic import DRAW_ROW_MIME_TYPE, LAYER_ROW_MIME_TYPE
+from ui.widgets.layer_logic import DRAW_ROW_MIME_TYPE, LAYER_ROW_MIME_TYPE
 
 
 class _RowClickForwarder(QObject):

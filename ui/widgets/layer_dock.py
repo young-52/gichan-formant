@@ -29,7 +29,7 @@ from PyQt6.QtGui import QFont, QFontMetrics
 
 import config
 import app_logger
-from .layer_logic import (
+from ui.widgets.layer_logic import (
     apply_global_eye,
     apply_global_semi,
     apply_line_settings,
@@ -40,24 +40,24 @@ from .layer_logic import (
     compute_order_after_drop,
     get_children_indices,
 )
-from .design_panel import ColorPalette
-from .draw_design_panel import DrawDesignPanel
-from .label_manager import LabelManager
-from .draw_manager import DrawManager
-from .layer_row_widgets import (
+from ui.widgets.design_panel import ColorPalette
+from ui.widgets.draw_design_panel import DrawDesignPanel
+from ui.widgets.label_manager import LabelManager
+from ui.widgets.draw_manager import DrawManager
+from ui.widgets.layer_row_widgets import (
     _RowClickForwarder,
     _LayerRowFrame,
     _DrawLayerRowFrame,
 )
-from .tab_label_view import create_label_tab
-from .tab_draw_view import create_draw_tab
-from .icon_widgets import (
+from ui.widgets.tab_label_view import create_label_tab
+from ui.widgets.tab_draw_view import create_draw_tab
+from ui.widgets.icon_widgets import (
     LinePreviewButton,
     MarkerShapeButton,
     LayerEyeButton,
     LayerLockButton,
 )
-from . import layout_constants as lc
+import ui.widgets.layout_constants as lc
 from draw.draw_common import polygon_area
 
 
@@ -113,6 +113,19 @@ def _draw_object_display_name(draw_objects, index):
             1 for i in range(index) if getattr(draw_objects[i], "type", "") == "line"
         )
         labels = getattr(obj, "point_labels", None) or []
+        s = getattr(obj, "series", None)
+        if s in ("blue", "red"):
+            suffix = "1" if s == "blue" else "2"
+            norm_labels = []
+            for lb in labels:
+                t_lb = str(lb).strip()
+                if t_lb in ("", "?"):
+                    norm_labels.append(t_lb)
+                elif t_lb.endswith("1") or t_lb.endswith("2"):
+                    norm_labels.append(t_lb)
+                else:
+                    norm_labels.append(f"{t_lb}{suffix}")
+            labels = norm_labels
         suffix = " : " + "-".join(labels) if labels else ""
         return f"선 {n}{suffix}"
     if t == "polygon":
@@ -120,6 +133,19 @@ def _draw_object_display_name(draw_objects, index):
             1 for i in range(index) if getattr(draw_objects[i], "type", "") == "polygon"
         )
         labels = getattr(obj, "point_labels", None) or []
+        s = getattr(obj, "series", None)
+        if s in ("blue", "red"):
+            suffix = "1" if s == "blue" else "2"
+            norm_labels = []
+            for lb in labels:
+                t_lb = str(lb).strip()
+                if t_lb in ("", "?"):
+                    norm_labels.append(t_lb)
+                elif t_lb.endswith("1") or t_lb.endswith("2"):
+                    norm_labels.append(t_lb)
+                else:
+                    norm_labels.append(f"{t_lb}{suffix}")
+            labels = norm_labels
         if labels:
             suffix = " : " + "-".join(labels) + "-" + labels[0]
         else:
@@ -253,7 +279,7 @@ class LayerDockWidget(QWidget):
         color_layout.setSpacing(6)
         color_layout.addWidget(QLabel("라벨 텍스트 색상:", font=font_normal))
         self.lbl_color_picker = ColorPalette(
-            default_color="#E64A19",
+            default_color=config.COLOR_PRIMARY_RED,
             allow_transparent=True,
             parent=self.vowel_design_container,
         )
@@ -1887,7 +1913,7 @@ class LayerDockWidget(QWidget):
                 v = next(iter(self._selected_vowels))
                 o = overrides.get(v, {})
                 self.lbl_color_picker.set_color(
-                    o.get("lbl_color", ds.get("lbl_color", "#E64A19"))
+                    o.get("lbl_color", ds.get("lbl_color", config.COLOR_PRIMARY_RED))
                 )
                 idx = MARKER_IDS.get(
                     o.get("centroid_marker", ds.get("centroid_marker", "o")), 0
@@ -1918,7 +1944,9 @@ class LayerDockWidget(QWidget):
                     o.get("ell_fill_color") or ds.get("ell_fill_color") or "transparent"
                 )
             else:
-                self.lbl_color_picker.set_color(ds.get("lbl_color", "#E64A19"))
+                self.lbl_color_picker.set_color(
+                    ds.get("lbl_color", config.COLOR_PRIMARY_RED)
+                )
                 self.group_centroid_marker.button(0).setChecked(True)
                 self.group_ell_thick.button(1).setChecked(True)
                 self.group_ell_style.button(2).setChecked(True)

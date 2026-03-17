@@ -22,7 +22,7 @@ from PyQt6.QtGui import QIcon, QPixmap, QBrush, QColor, QFont, QPen
 
 from utils import icon_utils
 from utils.math_utils import calc_f2_prime
-from ui.display_utils import truncate_display_name, MAX_DISPLAY_NAME_LEN
+from ui.widgets.display_utils import truncate_display_name, MAX_DISPLAY_NAME_LEN
 from utils.vowel_stats import (
     analyze_vowels,
     calculate_point_distances_from_centroid,

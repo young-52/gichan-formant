@@ -5,19 +5,18 @@ import io
 import inspect
 import traceback
 import copy
-from PyQt6.QtWidgets import QMessageBox, QFileDialog, QProgressDialog
 from PyQt6.QtCore import Qt, QTimer, QStandardPaths
 from PyQt6.QtGui import QPixmap
 from matplotlib.figure import Figure
 
 import config
 import app_logger
-from ui.main_window import MainUI
-from ui.file_guide import DataGuidePopup
-from ui.popup_plot import PlotPopup
-from ui.display_utils import format_file_label
-from ui.compare_plot import SelectCompareDialog, ComparePlotPopup
-from ui.vowel_analysis_dialog import VowelAnalysisDialog
+from ui.windows.main_window import MainUI
+from ui.dialogs.file_guide import DataGuidePopup
+from ui.windows.popup_plot import PlotPopup
+from ui.widgets.display_utils import format_file_label
+from ui.windows.compare_plot import SelectCompareDialog, ComparePlotPopup
+from ui.dialogs.vowel_analysis_dialog import VowelAnalysisDialog
 from model.data_processor import DataProcessor
 from engine.plot_engine import PlotEngine, kor_font
 from tools.ruler import RulerTool
@@ -575,9 +574,7 @@ class MainController:
     def generate_plot(self):
         """현재 데이터로 시각화 창(PlotPopup)을 생성합니다."""
         if not self.plot_data_list:
-            QMessageBox.warning(
-                self.ui, "데이터 없음", "분석할 데이터를 먼저 로드해 주세요."
-            )
+            self.ui.show_warning("데이터 없음", "분석할 데이터를 먼저 로드해 주세요.")
             return
 
         fig = Figure(figsize=(6.5, 6.5), dpi=100)
@@ -724,8 +721,7 @@ class MainController:
     def open_compare_dialog(self, current_idx, parent_window=None):
         """다중 비교를 위한 대상 파일 선택 창(SelectCompareDialog)을 호출합니다."""
         if len(self.plot_data_list) < 2:
-            QMessageBox.warning(
-                parent_window or self.ui,
+            (parent_window or self.ui).show_warning(
                 "데이터 부족",
                 "비교할 대상이 부족합니다.\n2개 이상의 데이터를 로드해 주세요.",
             )
@@ -839,8 +835,7 @@ class MainController:
             app_logger.info(log_msg)
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(
-                parent_window or self.ui,
+            (parent_window or self.ui).show_critical(
                 "다중 플롯 오류",
                 f"다중 플롯 창을 열 수 없습니다.\n\n{e}",
             )
@@ -1413,10 +1408,10 @@ class MainController:
         else:
             app_logger.info(config.LOG_MSG["LABEL_MOVE_OFF"])
 
-    def download_plot(self, figure, fmt, parent_window=None):
-        """단일 이미지 파일 저장 구현. 기본 파일명: 확장자 제거, 다중은 _ 연결, 이상치/정규화 메타 반영."""
+    def get_default_save_path(self, fmt, parent_window=None):
+        """단일 이미지 저장의 기본 경로 및 디렉터리 반환."""
         if not self.plot_data_list:
-            return
+            return "", ""
         outlier_mode = getattr(self.ui, "get_outlier_mode", lambda: None)()
         outlier_suffix = ""
         if outlier_mode == "1sigma":
@@ -1450,7 +1445,6 @@ class MainController:
             base = os.path.splitext(current_name)[0]
             default_name = f"{base}{outlier_suffix}.{fmt}"
 
-        # 저장 위치 기본값: 마지막 저장 폴더가 있으면 우선, 없으면 OS 다운로드 폴더
         initial_dir = self.last_save_dir
         if not initial_dir:
             downloads_dir = QStandardPaths.writableLocation(
@@ -1460,92 +1454,60 @@ class MainController:
         initial_path = (
             os.path.join(initial_dir, default_name) if initial_dir else default_name
         )
+        return initial_path, initial_dir
 
-        file_path, _ = QFileDialog.getSaveFileName(
-            parent_window or self.ui,
-            f"플롯 이미지 저장({fmt.upper()})",
-            initial_path,
-            f"{fmt.upper()} Image (*.{fmt})",
-        )
-
-        if file_path:
-            try:
+    def save_plot_to_file(self, figure, file_path, fmt, parent_window=None):
+        """실제 파일 저장만을 수행, 오류시 예외 발생."""
+        try:
+            self.set_last_save_dir(os.path.dirname(file_path))
+        except Exception:
+            pass
+        if self.ruler_tool.active:
+            self.ruler_tool.clear_all()
+        if parent_window:
+            if getattr(parent_window, "_draw_tool", None) is not None:
                 try:
-                    self.set_last_save_dir(os.path.dirname(file_path))
+                    parent_window._draw_tool.cancel()
                 except Exception:
                     pass
-                # 캡처 직전 미확정 프리뷰 제거 (눈금자 선, 그리기 툴 마커 등)
-                if self.ruler_tool.active:
-                    self.ruler_tool.clear_all()
-                if parent_window:
-                    if getattr(parent_window, "_draw_tool", None) is not None:
-                        try:
-                            parent_window._draw_tool.cancel()
-                        except Exception:
-                            pass
-                    if getattr(parent_window, "canvas", None) is not None:
-                        try:
-                            parent_window.canvas.draw()
-                        except Exception:
-                            pass
-                figure.set_size_inches(6.5, 6.5)
-                if fmt.lower() == "png":
-                    figure.savefig(file_path, format="png", dpi=300, transparent=True)
-                else:
-                    figure.savefig(file_path, format=fmt, dpi=300, facecolor="white")
-                app_logger.info(
-                    config.LOG_MSG["SAVE_SINGLE_SHORT"].format(path=file_path)
-                )
-            except Exception as e:
-                traceback.print_exc()
-                QMessageBox.critical(
-                    parent_window or self.ui,
-                    "저장 실패",
-                    f"저장 중 오류가 발생했습니다:\n{e}",
-                )
+            if getattr(parent_window, "canvas", None) is not None:
+                try:
+                    parent_window.canvas.draw()
+                except Exception:
+                    pass
+        figure.set_size_inches(6.5, 6.5)
+        if fmt.lower() == "png":
+            figure.savefig(file_path, format="png", dpi=300, transparent=True)
+        else:
+            figure.savefig(file_path, format=fmt, dpi=300, facecolor="white")
+        app_logger.info(config.LOG_MSG["SAVE_SINGLE_SHORT"].format(path=file_path))
 
-    def batch_download_with_options(
-        self, ranges, sigma, img_format, design_settings=None
-    ):
-        """일괄 자동 저장: 백그라운드 스레드 + 진행 대화상자로 UI 멈춤 방지."""
-        if not self.plot_data_list:
-            return
-
-        # 디렉터리 선택 기본값: 마지막 저장 폴더가 있으면 우선, 없으면 OS 다운로드 폴더
+    def get_default_batch_save_dir(self):
+        """일괄 저장에 사용할 기본 디렉터리 반환."""
         initial_dir = self.last_save_dir
         if not initial_dir:
-            downloads_dir = QStandardPaths.writableLocation(
-                QStandardPaths.StandardLocation.DownloadLocation
+            initial_dir = (
+                QStandardPaths.writableLocation(
+                    QStandardPaths.StandardLocation.DownloadLocation
+                )
+                or ""
             )
-            initial_dir = downloads_dir or ""
+        return initial_dir
 
-        save_dir = QFileDialog.getExistingDirectory(
-            self.ui, "일괄 저장할 폴더를 선택하세요", initial_dir
-        )
-        if not save_dir:
-            return
-
+    def create_batch_save_worker(
+        self, save_dir, ranges, sigma, img_format, design_settings=None
+    ):
+        """일괄 저장을 위한 Worker 객체 생성 및 초기 설정만 수행."""
         self.set_last_save_dir(save_dir)
 
         plot_params = self._get_current_plot_params()
         plot_params["sigma"] = sigma
-        # 일괄 저장 파일명에도 단일 저장과 동일하게 이상치 제거 꼬리표 반영
         plot_params["outlier_mode"] = getattr(
             self.ui, "get_outlier_mode", lambda: None
         )()
         ds_settings = design_settings if design_settings else self._get_default_design()
 
-        total = len(self.plot_data_list)
-        app_logger.debug(config.LOG_MSG["BATCH_START"].format(total=total, sigma=sigma))
-        progress_dialog = QProgressDialog(
-            "이미지 저장 중...", "취소", 0, total, self.ui
-        )
-        progress_dialog.setWindowTitle("일괄 저장")
-        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        progress_dialog.setMinimumDuration(0)
-        progress_dialog.setValue(0)
-
-        worker = BatchSaveWorker(
+        return BatchSaveWorker(
             save_dir,
             self.plot_data_list,
             self.plot_engine,
@@ -1554,44 +1516,6 @@ class MainController:
             ds_settings,
             img_format,
         )
-
-        def on_progress(current, tot):
-            progress_dialog.setValue(current)
-            progress_dialog.setLabelText(f"저장 중... ({current}/{tot})")
-
-        def on_finished(success_count):
-            progress_dialog.close()
-            errors = getattr(worker, "errors", [])
-            if success_count == 0 and errors:
-                # 모든 파일 저장 실패: 간단한 요약과 함께 경고
-                sample = ", ".join(f"{name}: {msg}" for name, msg in errors[:3])
-                app_logger.warning(
-                    config.LOG_MSG["BATCH_ALL_FAILED"].format(
-                        fail_count=len(errors), sample=sample
-                    )
-                )
-                QMessageBox.warning(
-                    self.ui, "일괄 저장 실패", config.LOG_MSG["BATCH_ALL_FAILED_BOX"]
-                )
-            else:
-                app_logger.info(
-                    config.LOG_MSG["BATCH_SUCCESS"].format(success_count=success_count)
-                )
-                QMessageBox.information(
-                    self.ui,
-                    "일괄 저장 완료",
-                    f"총 {success_count}개의 이미지가 '{save_dir}'에 저장되었습니다.",
-                )
-
-        def on_log_error(msg):
-            app_logger.warning(msg)
-
-        worker.progress.connect(on_progress)
-        worker.finished_with_count.connect(on_finished)
-        worker.log_error.connect(on_log_error)
-        progress_dialog.canceled.connect(worker.terminate)
-        worker.start()
-        progress_dialog.show()
 
     # --- 공개 API (View는 이 메서드들만 사용) ---
 

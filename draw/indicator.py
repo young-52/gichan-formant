@@ -3,7 +3,7 @@
 
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QButtonGroup
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QFont
 
 
 class DrawModeIndicator(QFrame):
@@ -54,6 +54,7 @@ class DrawModeIndicator(QFrame):
             btn.setCheckable(True)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setToolTip(tooltip)
+            btn.setFont(QFont("Malgun Gothic", 10))
             btn.setStyleSheet(
                 """
                 QPushButton {
@@ -62,6 +63,7 @@ class DrawModeIndicator(QFrame):
                     border-radius: 3px;
                     color: #303133;
                     font-size: 11px;
+                    font-family: "Malgun Gothic";
                     padding: 4px 8px;
                 }
                 QPushButton:checked {

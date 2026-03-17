@@ -19,7 +19,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon, QPixmap
 
 from utils import icon_utils
-from .display_utils import strip_gichan_prefix
+from ui.widgets.display_utils import strip_gichan_prefix
 
 
 class LiveVowelFilterPanel(QDialog):

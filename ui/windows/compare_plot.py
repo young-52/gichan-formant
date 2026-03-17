@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QSizePolicy,
     QStackedWidget,
+    QFileDialog,
 )
 from PyQt6.QtCore import Qt, QObject, QEvent
 
@@ -44,21 +45,24 @@ from PyQt6.QtGui import (
     QKeySequence,
 )
 
-from .canvas_fixed import FixedFigureCanvas
+from ui.widgets.canvas_fixed import FixedFigureCanvas
 
 from engine.plot_engine import PlotEngine
-from .tool_indicator import ToolStatusIndicator
+from ui.widgets.tool_indicator import ToolStatusIndicator
 from utils import icon_utils
 import config
 import app_logger
-from .filter_panel import MultiVowelFilterPanel
+from ui.widgets.filter_panel import MultiVowelFilterPanel
 
-from .design_panel import CompareDesignSettingsPanel, NoWheelComboBox
-from .icon_widgets import create_legend_icon_design, BidirectionalArrowButton
-from .display_utils import truncate_display_name, MAX_DISPLAY_NAME_LEN
+from ui.widgets.design_panel import CompareDesignSettingsPanel, NoWheelComboBox
+from ui.widgets.icon_widgets import create_legend_icon_design, BidirectionalArrowButton
+from ui.widgets.display_utils import truncate_display_name, MAX_DISPLAY_NAME_LEN
 from utils.math_utils import hz_to_bark, bark_to_hz
-from .layer_dock import LayerDockWidget
-from . import layout_constants as layout
+from ui.widgets.layer_dock import LayerDockWidget
+import ui.widgets.layout_constants as layout
+from draw import DrawModeIndicator, DrawMode, draw_line, draw_polygon, draw_reference
+from draw.draw_common import polygon_area, AreaLabelObject
+from ui.windows.popup_plot import PlotPopup
 
 
 class ClickClearFocusFilter(QObject):
@@ -382,6 +386,10 @@ class ComparePlotPopup(QMainWindow):
         # 다중 플롯 draw는 파일별이 아닌 공통 리스트를 사용할 계획.
         # (도구 이식 전 준비 단계: layer_dock/draw_manager 연동용 저장소)
         self._draw_objects_shared = []
+        self._draw_layer_artists = []
+        self._draw_layer_area_label_refs = []
+        self._draw_tool = None
+        self._active_draw_series = "blue"
 
         # 범례 위젯들을 저장하여 실시간 렌더링에 사용
         self.legend_refs = {"blue": {}, "red": {}}
@@ -510,13 +518,31 @@ class ComparePlotPopup(QMainWindow):
         top_row.addWidget(self.tool_indicator, alignment=Qt.AlignmentFlag.AlignRight)
         central_layout.addLayout(top_row)
 
-        # 캔버스 고정 크기: config.PLOT_CANVAS_SIZE_PX (compare_plot / popup_plot 동일)
+        # popup_plot과 동일: canvas_wrapper 위에 canvas+draw_indicator를 오버레이 배치
         central_layout.addStretch(1)
+        canvas_wrapper = QWidget()
+        canvas_wrapper.setFixedSize(
+            config.PLOT_CANVAS_SIZE_PX, config.PLOT_CANVAS_SIZE_PX
+        )
         self.canvas = FixedFigureCanvas(self.figure)
+        self.canvas.setParent(canvas_wrapper)
+        self.canvas.setGeometry(
+            0, 0, config.PLOT_CANVAS_SIZE_PX, config.PLOT_CANVAS_SIZE_PX
+        )
         self.canvas.setFixedSize(config.PLOT_CANVAS_SIZE_PX, config.PLOT_CANVAS_SIZE_PX)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.canvas.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        central_layout.addWidget(self.canvas, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.draw_indicator = DrawModeIndicator(canvas_wrapper)
+        self.draw_indicator.setParent(canvas_wrapper)
+        self._draw_indicator_height = 34
+        self.draw_indicator.move(
+            8, config.PLOT_CANVAS_SIZE_PX - 8 - self._draw_indicator_height
+        )
+        self.draw_indicator.mode_changed.connect(self._on_draw_mode_changed)
+        self.draw_indicator.adjustSize()
+        self.draw_indicator.raise_()
+        self.draw_indicator.hide()
+        central_layout.addWidget(canvas_wrapper, alignment=Qt.AlignmentFlag.AlignCenter)
         central_layout.addStretch(1)
 
         self.central_outer_layout.addWidget(self.sep_left)
@@ -1088,7 +1114,7 @@ class ComparePlotPopup(QMainWindow):
         self.btn_draw.setFixedHeight(35)
         self.btn_draw.setFont(font_normal)
         self.btn_draw.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.btn_draw.setEnabled(False)
+        self.btn_draw.setEnabled(True)
         self.btn_draw.setStyleSheet("""
             QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #606266; }
             QPushButton:hover:!checked { background-color: #E4E7ED; }
@@ -1108,9 +1134,9 @@ class ComparePlotPopup(QMainWindow):
         save_h.setSpacing(4)
         btn_jpg = QPushButton("JPG 저장")
         btn_png = QPushButton("PNG 저장")
-        btn_eps = QPushButton("EPS 저장")
+        btn_svg = QPushButton("SVG 저장")
 
-        for btn, fmt in zip([btn_jpg, btn_png, btn_eps], ["jpg", "png", "eps"]):
+        for btn, fmt in zip([btn_jpg, btn_png, btn_svg], ["jpg", "png", "svg"]):
             btn.setFixedHeight(34)
             btn.setFont(QFont(self.ui_font_name, 8))
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -1118,9 +1144,7 @@ class ComparePlotPopup(QMainWindow):
                 "background-color: white; border: 1px solid #C0C4CC; border-radius: 4px;"
             )
             btn.clicked.connect(
-                lambda checked, f=fmt: self.controller.download_plot(
-                    self.figure, f, parent_window=self
-                )
+                lambda checked, f=fmt: self._on_download_plot(checked, f)
             )
             save_h.addWidget(btn)
 
@@ -1209,6 +1233,9 @@ class ComparePlotPopup(QMainWindow):
     def closeEvent(self, event):
         if self.controller.ruler_tool.active:
             self.controller.toggle_ruler(self)
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            self.btn_draw.setChecked(False)
+        self._draw_tool_deactivate()
         if (
             hasattr(self, "_click_clear_focus_filter")
             and self._click_clear_focus_filter is not None
@@ -1271,10 +1298,39 @@ class ComparePlotPopup(QMainWindow):
         QShortcut(
             QKeySequence(Qt.Key.Key_P), self, context=Qt.ShortcutContext.WindowShortcut
         ).activated.connect(self._safe_toggle_draw)
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._safe_save_jpg)
+        QShortcut(
+            QKeySequence(Qt.Key.Key_1), self, context=Qt.ShortcutContext.WindowShortcut
+        ).activated.connect(lambda: self._safe_set_draw_mode(DrawMode.LINE))
+        QShortcut(
+            QKeySequence(Qt.Key.Key_2), self, context=Qt.ShortcutContext.WindowShortcut
+        ).activated.connect(lambda: self._safe_set_draw_mode(DrawMode.POLYGON))
+        QShortcut(
+            QKeySequence(Qt.Key.Key_3), self, context=Qt.ShortcutContext.WindowShortcut
+        ).activated.connect(lambda: self._safe_set_draw_mode(DrawMode.REF_H))
+        QShortcut(
+            QKeySequence(Qt.Key.Key_4), self, context=Qt.ShortcutContext.WindowShortcut
+        ).activated.connect(lambda: self._safe_set_draw_mode(DrawMode.REF_V))
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(
+            lambda: self._on_download_plot(False, "jpg")
+        )
         QShortcut(
             QKeySequence("Esc"), self, context=Qt.ShortcutContext.WindowShortcut
         ).activated.connect(self._safe_cancel_ruler_point)
+        QShortcut(
+            QKeySequence(Qt.Key.Key_Return),
+            self,
+            context=Qt.ShortcutContext.WindowShortcut,
+        ).activated.connect(self._safe_draw_complete)
+        QShortcut(
+            QKeySequence(Qt.Key.Key_Enter),
+            self,
+            context=Qt.ShortcutContext.WindowShortcut,
+        ).activated.connect(self._safe_draw_complete)
+        QShortcut(
+            QKeySequence(QKeySequence.StandardKey.Undo),
+            self,
+            context=Qt.ShortcutContext.WindowShortcut,
+        ).activated.connect(self._safe_draw_rollback)
         QShortcut(
             QKeySequence("Ctrl+B"), self, context=Qt.ShortcutContext.WindowShortcut
         ).activated.connect(self._safe_toggle_bold)
@@ -1285,8 +1341,30 @@ class ComparePlotPopup(QMainWindow):
     def _safe_cancel_ruler_point(self):
         if self._is_input_focused():
             return
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            if getattr(self, "_draw_tool", None) is not None:
+                self._draw_tool.cancel()
+            return
         if self.controller.ruler_tool.active:
             self.controller.ruler_tool._cancel_current_drawing()
+
+    def _safe_draw_complete(self):
+        if (
+            getattr(self, "btn_draw", None)
+            and self.btn_draw.isChecked()
+            and getattr(self, "_draw_tool", None)
+        ):
+            self._draw_tool.complete()
+
+    def _safe_draw_rollback(self):
+        if self._is_input_focused():
+            return
+        if (
+            getattr(self, "btn_draw", None)
+            and self.btn_draw.isChecked()
+            and getattr(self, "_draw_tool", None)
+        ):
+            self._draw_tool.rollback()
 
     def _safe_toggle_bold(self):
         if self._is_input_focused():
@@ -1396,12 +1474,32 @@ class ComparePlotPopup(QMainWindow):
         data_blue = data_blue_item["name"] if data_blue_item else ""
         data_red = data_red_item["name"] if data_red_item else ""
         self._update_compare_window_title(data_blue, data_red)
+        self._redraw_draw_layer()
+        self._rebind_draw_tool_if_active()
+        if hasattr(self, "_layer_dock_blue") and self._layer_dock_blue is not None:
+            self._layer_dock_blue.update_draw_layer_list(
+                self._get_current_draw_objects()
+            )
+        if hasattr(self, "_layer_dock_red") and self._layer_dock_red is not None:
+            self._layer_dock_red.update_draw_layer_list(
+                self._get_current_draw_objects()
+            )
         return True
 
     def _on_range_apply_clicked(self):
         """좌표축 범위 '적용' 버튼 전용: 적용 후 로그만 기록."""
         if self.on_apply():
             app_logger.info(config.LOG_MSG["PLOT_RANGE_APPLIED"])
+
+    def _rebind_draw_tool_if_active(self):
+        if not getattr(self, "btn_draw", None) or not self.btn_draw.isChecked():
+            return
+        if not getattr(self, "draw_indicator", None):
+            return
+        mode = self.draw_indicator.get_mode()
+        if mode is None:
+            return
+        self._on_draw_mode_changed(mode)
 
     def _safe_toggle_ruler(self):
         if self._is_input_focused():
@@ -1432,9 +1530,6 @@ class ComparePlotPopup(QMainWindow):
             return
         if not getattr(self, "btn_draw", None):
             return
-        # 현재 compare 모드의 draw는 이식 전이라 비활성화. 키맵은 준비만 해두고 무시.
-        if not self.btn_draw.isEnabled():
-            return
         next_state = not self.btn_draw.isChecked()
         if next_state and (
             self._is_ruler_active() or self._is_compare_label_move_active()
@@ -1452,14 +1547,203 @@ class ComparePlotPopup(QMainWindow):
             if hasattr(self, "tool_indicator") and self.tool_indicator is not None:
                 self.tool_indicator.set_draw_mode_on(False)
             return
-        # compare 모드 draw 이식 전: UI 표시만 OFF 유지
-        if not self.btn_draw.isEnabled():
-            self.btn_draw.setChecked(False)
+        if self.btn_draw.isChecked():
+            if hasattr(self, "draw_indicator") and self.draw_indicator is not None:
+                self.draw_indicator.show()
+                self.draw_indicator.adjustSize()
+                self.draw_indicator.set_mode(None)
+            self._draw_tool_deactivate()
+        else:
+            self._draw_tool_deactivate()
+            if hasattr(self, "draw_indicator") and self.draw_indicator is not None:
+                self.draw_indicator.hide()
         if hasattr(self, "tool_indicator") and self.tool_indicator is not None:
             self.tool_indicator.set_draw_mode_on(self.btn_draw.isChecked())
 
+    def _safe_set_draw_mode(self, mode):
+        if self._is_input_focused():
+            return
+        if not (getattr(self, "btn_draw", None) and self.btn_draw.isChecked()):
+            return
+        if hasattr(self, "draw_indicator") and self.draw_indicator is not None:
+            self.draw_indicator.set_mode(mode)
+        self._on_draw_mode_changed(mode)
+
+    def _draw_tool_deactivate(self):
+        if getattr(self, "_draw_tool", None) is not None:
+            try:
+                self._draw_tool.deactivate()
+            except Exception:
+                pass
+            self._draw_tool = None
+        if getattr(self, "canvas", None) is not None:
+            self.canvas.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    def _current_draw_series(self):
+        if hasattr(self, "_layer_stack") and self._layer_stack is not None:
+            return "blue" if self._layer_stack.currentIndex() == 0 else "red"
+        if hasattr(self, "design_tab") and self.design_tab is not None:
+            return "blue" if self.design_tab.sub_tabs.currentIndex() == 0 else "red"
+        return "blue"
+
+    def _snapping_data_for_series(self, series: str):
+        # 요구사항: 다중 플롯 그리기에서는 두 파일 점 모두 스냅 대상이어야 한다.
+        return getattr(self, "snapping_data", None) or []
+
+    def _on_draw_mode_changed(self, mode):
+        if mode is None:
+            self._draw_tool_deactivate()
+            return
+        if self.btn_ruler.isChecked():
+            self.controller.toggle_ruler(self)
+        if self._is_compare_label_move_active():
+            cur = getattr(self, "_label_move_series", None) or "blue"
+            self.controller.toggle_compare_label_move(self, cur)
+
+        ax = self.figure.axes[0] if self.figure.axes else None
+        if ax is None:
+            return
+        series = self._current_draw_series()
+        self._active_draw_series = series
+        snapping_data = self._snapping_data_for_series(series)
+        params = getattr(self, "fixed_plot_params", None) or {}
+        if params.get("normalization"):
+            x_unit = y_unit = "norm"
+        else:
+            x_unit = (params.get("f2_unit") or "Hz").strip()
+            y_unit = (params.get("f1_unit") or "Hz").strip()
+        x_scale = (params.get("f2_scale") or "linear").strip().lower()
+        y_scale = (params.get("f1_scale") or "linear").strip().lower()
+        x_name = getattr(self, "x_axis_label", None) or "F2"
+        y_name = "F1"
+        self._draw_tool_deactivate()
+
+        font_family = ["DejaVu Sans", "Malgun Gothic"]
+        if getattr(self, "design_settings", None):
+            common = self.design_settings.get("common", {}) or {}
+            if common.get("font_style") == "serif":
+                font_family = ["Times New Roman", "Noto Serif KR", "DejaVu Serif"]
+
+        def _on_draw_cancel():
+            if hasattr(self, "draw_indicator") and self.draw_indicator is not None:
+                self.draw_indicator.set_mode(None)
+
+        if mode == DrawMode.LINE:
+            self._draw_tool = draw_line.DrawLineTool(
+                self.canvas,
+                ax,
+                snapping_data,
+                axis_units=y_unit,
+                on_complete=self._on_draw_object_complete,
+                on_cancel=_on_draw_cancel,
+                font_family=["DejaVu Sans", "Malgun Gothic"],
+            )
+        elif mode == DrawMode.POLYGON:
+            self._draw_tool = draw_polygon.DrawPolygonTool(
+                self.canvas,
+                ax,
+                snapping_data,
+                axis_units=y_unit,
+                on_complete=self._on_draw_object_complete,
+                on_cancel=_on_draw_cancel,
+                font_family=["DejaVu Sans", "Malgun Gothic"],
+            )
+        elif mode in (DrawMode.REF_H, DrawMode.REF_V):
+            self._draw_tool = draw_reference.DrawReferenceTool(
+                self.canvas,
+                ax,
+                horizontal=(mode == DrawMode.REF_H),
+                snapping_data=snapping_data,
+                x_unit=x_unit,
+                y_unit=y_unit,
+                x_scale=x_scale,
+                y_scale=y_scale,
+                x_name=x_name,
+                y_name=y_name,
+                on_complete=self._on_draw_object_complete,
+                on_cancel=_on_draw_cancel,
+                font_family=font_family,
+                tick_color="#303133",
+            )
+        else:
+            return
+        self.canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.canvas.setFocus()
+        self._draw_tool.activate()
+
+    def _normalize_compare_point_labels(self, labels):
+        """'a - file.txt' 형태를 기본 라벨(a/u/...)로 정규화."""
+        if not labels:
+            return labels
+        out = []
+        for raw in labels:
+            s = str(raw or "").strip()
+            if not s:
+                out.append(s)
+                continue
+            if " - " not in s:
+                # 이미 suffix가 붙어 들어온 경우(a1 등) 기본 라벨만 남긴다.
+                core = s[:-1] if len(s) >= 2 and s[-1] in ("1", "2") else s
+                out.append(core)
+                continue
+            vowel, _src = s.split(" - ", 1)
+            v = str(vowel).strip()
+            out.append(v)
+        return out
+
+    def _on_draw_object_complete(self, obj):
+        setattr(obj, "series", self._active_draw_series)
+        if hasattr(obj, "point_labels"):
+            obj.point_labels = self._normalize_compare_point_labels(
+                getattr(obj, "point_labels", None) or []
+            )
+        objs = self._get_current_draw_objects()
+        objs.append(obj)
+        if (
+            getattr(obj, "type", "") == "polygon"
+            and getattr(obj, "points", None)
+            and len(obj.points) >= 3
+            and getattr(obj, "id", "")
+            and getattr(obj, "show_area_label", False)
+        ):
+            area = polygon_area(obj.points)
+            xs = [p[0] for p in obj.points]
+            ys = [p[1] for p in obj.points]
+            cx = sum(xs) / len(xs)
+            cy = sum(ys) / len(ys)
+            area_label = AreaLabelObject(
+                parent_id=obj.id,
+                value=area,
+                x=cx,
+                y=cy,
+                axis_units=getattr(obj, "axis_units", "Hz"),
+                visible=obj.visible,
+                locked=obj.locked,
+                semi=obj.semi,
+            )
+            setattr(area_label, "series", self._active_draw_series)
+            objs.append(area_label)
+
+        self._redraw_draw_layer()
+        if hasattr(self, "_layer_dock_blue") and self._layer_dock_blue is not None:
+            self._layer_dock_blue.update_draw_layer_list(
+                self._get_current_draw_objects()
+            )
+        if hasattr(self, "_layer_dock_red") and self._layer_dock_red is not None:
+            self._layer_dock_red.update_draw_layer_list(
+                self._get_current_draw_objects()
+            )
+        if self.canvas:
+            self.canvas.draw_idle()
+
+    def show_warning(self, title, text):
+        QMessageBox.warning(self, title, text)
+
+    def show_critical(self, title, text):
+        QMessageBox.critical(self, title, text)
+
     def keyPressEvent(self, event):
-        """T 키: 현재 디자인 서브 탭(Blue/Red)에 해당하는 라벨 위치 이동 툴만 토글."""
+        # T 키: 현재 디자인 서브 탭(Blue/Red)에 해당하는 라벨 위치 이동 툴만 토글.
         if event.key() == Qt.Key.Key_T:
             if (
                 not self._is_input_focused()
@@ -1595,6 +1879,7 @@ class ComparePlotPopup(QMainWindow):
         self._layer_stack.setCurrentIndex(index)
         self._layer_dock_blue.set_compare_file_index(index)
         self._layer_dock_red.set_compare_file_index(index)
+        self._rebind_draw_tool_if_active()
 
     def _on_compare_layer_splitter_changed(self, sizes):
         """한쪽 레이어 도크 스플리터 조절 시 비율 저장 후 다른 쪽에 동일 적용."""
@@ -1620,10 +1905,29 @@ class ComparePlotPopup(QMainWindow):
             current_blue_vowels = list(self._layer_dock_blue._layer_rows.keys())
             self._layer_dock_blue.set_vowels(current_blue_vowels)
 
-    def _safe_save_jpg(self):
+    def _on_download_plot(self, checked, fmt):
         if self._is_input_focused():
             return
-        self.controller.download_plot(self.figure, "jpg", parent_window=self)
+        initial_path, _ = self.controller.get_default_save_path(fmt, self)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"플롯 이미지 저장({fmt.upper()})",
+            initial_path,
+            f"{fmt.upper()} Image (*.{fmt})",
+        )
+        if file_path:
+            try:
+                self.controller.save_plot_to_file(self.figure, file_path, fmt, self)
+                QMessageBox.information(
+                    self, "저장 완료", "이미지가 성공적으로 저장되었습니다."
+                )
+            except Exception as e:
+                import traceback
+
+                traceback.print_exc()
+                QMessageBox.critical(
+                    self, "저장 실패", f"저장 중 오류가 발생했습니다:\n{e}"
+                )
 
     def _reset_ranges_to_default(self, apply_plot=True):
         if not hasattr(self, "fixed_plot_params"):
@@ -1687,9 +1991,12 @@ class ComparePlotPopup(QMainWindow):
         self._draw_objects_shared = list(lst or [])
 
     def _redraw_draw_layer(self):
-        """draw 렌더러 이식 전 no-op. 레이어 도크 호출 경로만 준비."""
-        if getattr(self, "canvas", None) is not None:
-            self.canvas.draw_idle()
+        # popup의 검증된 렌더러를 그대로 재사용 (중복 구현 방지).
+        PlotPopup._redraw_draw_layer(self)
+
+    def _ensure_area_label_drag_connected(self):
+        """compare에서는 영역 라벨 드래그 이동을 아직 지원하지 않는다."""
+        return
 
     def update_ruler_style(self, is_on):
         self.btn_ruler.setChecked(is_on)
@@ -1702,6 +2009,8 @@ class ComparePlotPopup(QMainWindow):
         )
         if hasattr(self, "tool_indicator") and self.tool_indicator is not None:
             self.tool_indicator.set_ruler_on(is_on)
-            # compare draw는 아직 미이식 상태이므로 indicator는 항상 OFF를 유지
-            if not self.btn_draw.isEnabled():
-                self.tool_indicator.set_draw_mode_on(False)
+        if is_on and getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            self.btn_draw.setChecked(False)
+            if hasattr(self, "draw_indicator") and self.draw_indicator is not None:
+                self.draw_indicator.hide()
+            self._draw_tool_deactivate()
