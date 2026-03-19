@@ -1,4 +1,3 @@
-import base64
 import platform
 from PyQt6.QtWidgets import (
     QDialog,
@@ -11,7 +10,7 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtGui import QFont
 
 from utils import icon_utils
 

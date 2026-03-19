@@ -1,15 +1,26 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFormLayout,
-    QLineEdit, QPushButton, QButtonGroup, QWidget, QSizePolicy,
-    QFileDialog, QProgressDialog, QMessageBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QFormLayout,
+    QLineEdit,
+    QPushButton,
+    QButtonGroup,
+    QWidget,
+    QSizePolicy,
+    QFileDialog,
+    QProgressDialog,
+    QMessageBox,
 )
-from PyQt6.QtGui import QIcon, QFont, QRegularExpressionValidator
+from PyQt6.QtGui import QFont, QRegularExpressionValidator
 from PyQt6.QtCore import Qt, QRegularExpression
 import inspect
 
 from utils import icon_utils
 import config
 import app_logger
+
 
 class BatchSaveDialog(QDialog):
     """일괄 저장 설정 다이얼로그"""

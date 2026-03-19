@@ -1,6 +1,5 @@
 # ui/vowel_analysis_dialog.py — 모음 상세 분석 결과 창
 
-import base64
 import os
 from PyQt6.QtWidgets import (
     QDialog,
@@ -18,7 +17,7 @@ from PyQt6.QtWidgets import (
     QStyledItemDelegate,
 )
 from PyQt6.QtCore import Qt, QStandardPaths
-from PyQt6.QtGui import QIcon, QPixmap, QBrush, QColor, QFont, QPen
+from PyQt6.QtGui import QBrush, QColor, QFont, QPen, QKeySequence
 
 from utils import icon_utils
 from utils.math_utils import calc_f2_prime
@@ -35,6 +34,36 @@ DATA_COL_WIDTH = 92
 # 테이블 전체 너비 + 레이아웃 좌우 마진(16*2) + 여유(스크롤/테두리) = 창 최소/초기 가로
 TABLE_TOTAL_WIDTH = VOWEL_COL_WIDTH + 8 * DATA_COL_WIDTH
 DIALOG_WIDTH = TABLE_TOTAL_WIDTH + 32 + 24
+
+
+class CopyableTableWidget(QTableWidget):
+    """데이터 복사(Tab-separated) 기능을 제공하는 테이블 위젯."""
+
+    def _copy_selection(self):
+        selection = self.selectedIndexes()
+        if not selection:
+            return
+
+        # 선택된 인덱스들을 행/열 기준으로 정렬
+        rows = sorted(list(set(idx.row() for idx in selection)))
+        cols = sorted(list(set(idx.column() for idx in selection)))
+
+        lines = []
+        for r in rows:
+            row_data = []
+            for c in cols:
+                it = self.item(r, c)
+                # 실제로 선택된 셀인 경우에만 텍스트 포함 (아니면 공백)
+                if it and it.isSelected():
+                    row_data.append(it.text())
+                else:
+                    row_data.append("")
+            lines.append("\t".join(row_data))
+
+        text_to_copy = "\n".join(lines)
+        from PyQt6.QtWidgets import QApplication
+
+        QApplication.clipboard().setText(text_to_copy)
 
 
 # 데이터 행에만 세로 구분선 (헤더 행에는 그리지 않음)
@@ -143,6 +172,17 @@ class VowelAnalysisDialog(QDialog):
         self._build_ui()
         self._run_analysis()
         self._set_initial_tab()
+
+    def keyPressEvent(self, event):
+        """창 레벨에서 CTRL+C를 감지하여 현재 탭의 테이블 데이터를 복사합니다."""
+        if event.matches(QKeySequence.StandardKey.Copy):
+            current_tab = self.tabs.currentWidget()
+            if current_tab:
+                table = current_tab.findChild(CopyableTableWidget)
+                if table:
+                    table._copy_selection()
+        else:
+            super().keyPressEvent(event)
 
     def _apply_icon(self):
         try:
@@ -284,13 +324,13 @@ class VowelAnalysisDialog(QDialog):
         widths = [VOWEL_COL_WIDTH] + [DATA_COL_WIDTH] * 8
         n_data_rows = len(vowels)
         n_header_rows = 2
-        table = QTableWidget(n_header_rows + n_data_rows, 9)
+        table = CopyableTableWidget(n_header_rows + n_data_rows, 9)
         table.horizontalHeader().setVisible(False)
         table.verticalHeader().setVisible(False)
         table.setShowGrid(False)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         table.setAlternatingRowColors(True)
         table.setStyleSheet("""
             QTableWidget { background: white; border: 1px solid #E4E7ED; border-radius: 4px; gridline-color: transparent; }

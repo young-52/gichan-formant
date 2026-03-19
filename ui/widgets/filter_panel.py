@@ -2,7 +2,6 @@
 
 import os
 import platform
-import base64
 from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -16,7 +15,7 @@ from PyQt6.QtWidgets import (
     QTabWidget,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtGui import QFont
 
 from utils import icon_utils
 from ui.widgets.display_utils import strip_gichan_prefix

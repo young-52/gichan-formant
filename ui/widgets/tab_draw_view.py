@@ -21,7 +21,6 @@ def create_draw_tab(dock) -> QWidget:
     )
     draw_tab_layout.addWidget(draw_tab_underline)
 
-
     dock._draw_layer_scroll = QScrollArea()
     dock._draw_layer_scroll.setWidgetResizable(True)
     dock._draw_layer_scroll.setHorizontalScrollBarPolicy(

@@ -1,5 +1,11 @@
-from PyQt6.QtWidgets import QMainWindow, QApplication, QLineEdit, QMessageBox, QFileDialog
-from PyQt6.QtGui import QIcon, QShortcut, QKeySequence
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QApplication,
+    QLineEdit,
+    QMessageBox,
+    QFileDialog,
+)
+from PyQt6.QtGui import QShortcut, QKeySequence
 from PyQt6.QtCore import Qt
 
 import matplotlib.colors as mcolors
@@ -11,10 +17,12 @@ from draw.draw_common import polygon_area, AreaLabelObject
 from utils.math_utils import hz_to_bark
 from draw import draw_line, draw_polygon, draw_reference
 
+
 class BasePlotWindow(QMainWindow):
     """
     popup_plot.py와 compare_plot.py의 공통 로직을 담는 부모 클래스입니다.
     """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._is_label_move_active_flag = False
@@ -106,7 +114,7 @@ class BasePlotWindow(QMainWindow):
         QShortcut(
             QKeySequence(Qt.Key.Key_M), self, context=Qt.ShortcutContext.WindowShortcut
         ).activated.connect(self._safe_compare_click)
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(
+        QShortcut(QKeySequence(QKeySequence.StandardKey.Save), self).activated.connect(
             lambda: self._on_download_plot(False, "jpg")
         )
 
@@ -264,7 +272,9 @@ class BasePlotWindow(QMainWindow):
         if self._is_input_focused():
             return
         if hasattr(self, "design_tab") and hasattr(self.design_tab, "btn_lock"):
-            self.design_tab.btn_lock.setChecked(not self.design_tab.btn_lock.isChecked())
+            self.design_tab.btn_lock.setChecked(
+                not self.design_tab.btn_lock.isChecked()
+            )
 
     def _safe_switch_to_tab(self, index):
         """A/D 키: 탭 전환"""
@@ -279,7 +289,9 @@ class BasePlotWindow(QMainWindow):
             return
         if hasattr(self, "design_tab") and hasattr(self.design_tab, "btn_bold"):
             # PlotPopup 방식 (단일 버튼)
-            self.design_tab.btn_bold.setChecked(not self.design_tab.btn_bold.isChecked())
+            self.design_tab.btn_bold.setChecked(
+                not self.design_tab.btn_bold.isChecked()
+            )
 
     def _safe_toggle_italic(self):
         """Ctrl+I: 기울임 토글"""
@@ -287,7 +299,9 @@ class BasePlotWindow(QMainWindow):
             return
         if hasattr(self, "design_tab") and hasattr(self.design_tab, "btn_italic"):
             # PlotPopup 방식 (단일 버튼)
-            self.design_tab.btn_italic.setChecked(not self.design_tab.btn_italic.isChecked())
+            self.design_tab.btn_italic.setChecked(
+                not self.design_tab.btn_italic.isChecked()
+            )
 
     def _toggle_panels_visibility(self):
         """Tab 키: 패널 가시성 토글 (자식 개별 구현)"""
@@ -314,7 +328,9 @@ class BasePlotWindow(QMainWindow):
         if self._is_input_focused():
             return
         if hasattr(self, "design_tab") and hasattr(self.design_tab, "btn_label_move"):
-            self.design_tab.btn_label_move.setChecked(not self.design_tab.btn_label_move.isChecked())
+            self.design_tab.btn_label_move.setChecked(
+                not self.design_tab.btn_label_move.isChecked()
+            )
             self.controller.toggle_label_move(self)
 
     def _draw_tool_deactivate(self):
@@ -752,8 +768,13 @@ class BasePlotWindow(QMainWindow):
             y_unit = (params.get("f1_unit") or "Hz").strip()
         x_scale = (params.get("f2_scale") or "linear").strip().lower()
         y_scale = (params.get("f1_scale") or "linear").strip().lower()
-        x_name = getattr(self, "x_axis_label", None) or "F2"
-        y_name = "F1"
+        norm = params.get("normalization")
+        if norm:
+            x_name = "nF2"
+            y_name = "nF1"
+        else:
+            x_name = getattr(self, "x_axis_label", None) or "F2"
+            y_name = "F1"
         if ax is None:
             return
         self._draw_tool_deactivate()
@@ -761,7 +782,7 @@ class BasePlotWindow(QMainWindow):
         font_family = ["DejaVu Sans", "Malgun Gothic"]
         ds = getattr(self, "design_settings", None) or {}
         font_style = (
-            ds.get("font_style")                            # popup_plot: flat
+            ds.get("font_style")  # popup_plot: flat
             or (ds.get("common") or {}).get("font_style")  # compare_plot: nested
         )
         if font_style == "serif":

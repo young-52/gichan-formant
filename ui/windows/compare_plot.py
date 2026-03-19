@@ -2,7 +2,6 @@
 
 import os
 import platform
-import base64
 from ui.windows.base_plot_window import BasePlotWindow
 from PyQt6.QtWidgets import (
     QDialog,
@@ -39,8 +38,6 @@ class TabBarWheelBlocker(QObject):
 
 from PyQt6.QtGui import (
     QFont,
-    QIcon,
-    QPixmap,
     QShortcut,
     QKeySequence,
 )
@@ -460,7 +457,6 @@ class ComparePlotPopup(BasePlotWindow):
 
     def get_layer_design_overrides_red(self):
         return self.layer_design_overrides_red
-
 
     def _setup_ui(self, data_blue, data_red):
         self.central_widget = QWidget()
@@ -1153,7 +1149,8 @@ class ComparePlotPopup(BasePlotWindow):
         if hasattr(self, "lbl_f1_axis"):
             self.lbl_f1_axis.setText("nF1:")
         if hasattr(self, "lbl_x_axis"):
-            self.lbl_x_axis.setText("nF2:")
+            self.x_axis_label = "nF2"
+            self.lbl_x_axis.setText(f"{self.x_axis_label}:")
         if hasattr(self, "lbl_f1_unit"):
             self.lbl_f1_unit.setText("")
         if hasattr(self, "lbl_f2_unit"):
@@ -1266,6 +1263,7 @@ class ComparePlotPopup(BasePlotWindow):
             pass
 
         event.accept()
+
     # ── 단축키 ────────────────────────────────────────────────────────────────
     def _bind_shortcuts(self):
         """BasePlotWindow의 공통 단축키를 상속한다. Compare만의 추가 단축키는 여기에."""
@@ -1425,7 +1423,6 @@ class ComparePlotPopup(BasePlotWindow):
         # 요구사항: 다중 플롯 그리기에서는 두 파일 점 모두 스냅 대상이어야 한다.
         return getattr(self, "snapping_data", None) or []
 
-
     def _normalize_compare_point_labels(self, labels):
         """'a - file.txt' 형태를 기본 라벨(a/u/...)로 정규화."""
         if not labels:
@@ -1492,8 +1489,6 @@ class ComparePlotPopup(BasePlotWindow):
         if self.canvas:
             self.canvas.draw_idle()
 
-
-
     def keyPressEvent(self, event):
         # Enter/Return: 그리기 완료.
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -1501,7 +1496,6 @@ class ComparePlotPopup(BasePlotWindow):
                 self._safe_draw_complete()
             return
         super().keyPressEvent(event)
-
 
     def _on_compare_label_move_clicked(self, series):
         self._safe_toggle_compare_label_move(series)
@@ -1531,13 +1525,11 @@ class ComparePlotPopup(BasePlotWindow):
         if hasattr(self, "tool_indicator") and self.tool_indicator is not None:
             self.tool_indicator.set_label_move_on(is_on)
 
-
     def _is_label_move_active(self):
         return bool(
             getattr(self.controller, "label_move_tool", None)
             and self.controller.label_move_tool.active
         )
-
 
     def _safe_open_filter(self):
         if self._is_input_focused():
@@ -1645,7 +1637,6 @@ class ComparePlotPopup(BasePlotWindow):
             current_blue_vowels = list(self._layer_dock_blue._layer_rows.keys())
             self._layer_dock_blue.set_vowels(current_blue_vowels)
 
-
     def _reset_ranges_to_default(self, apply_plot=True):
         if not hasattr(self, "fixed_plot_params"):
             return
@@ -1669,8 +1660,6 @@ class ComparePlotPopup(BasePlotWindow):
         if apply_plot is True:
             self.on_apply()
 
-
-
     def _update_compare_window_title(self, data_blue, data_red):
         base = f"다중 플롯 모드 - {data_blue} vs {data_red}"
         mode = self.controller.get_outlier_mode()
@@ -1685,10 +1674,6 @@ class ComparePlotPopup(BasePlotWindow):
     def get_sigma(self):
         return self.cb_sigma.currentText()
 
-
-
-
     def _ensure_area_label_drag_connected(self):
         """compare에서는 영역 라벨 드래그 이동을 아직 지원하지 않는다."""
         return
-

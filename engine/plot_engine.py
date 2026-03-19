@@ -558,9 +558,12 @@ class PlotEngine:
         y_lim_start = get_lim(final_min_y, plot_params["f1_scale"], use_bark_units)
         y_lim_end = get_lim(final_max_y, plot_params["f1_scale"], use_bark_units)
 
-        ax.set_xlim(x_lim_start, x_lim_end)
-        ax.set_ylim(y_lim_start, y_lim_end)
-        ax.margins(0.05)
+        # 마진 추가 (Grid Line 유실 방지)
+        x_eps = 0.1 if plot_params.get("f2_scale") != "bark" else 0.01
+        y_eps = 0.1 if plot_params.get("f1_scale") != "bark" else 0.001
+        ax.set_xlim(x_lim_start - x_eps, x_lim_end + x_eps)
+        ax.set_ylim(y_lim_start - y_eps, y_lim_end + y_eps)
+        # ax.margins(0.05)
 
         if box_spines:
             for spine in ax.spines.values():
@@ -572,7 +575,7 @@ class PlotEngine:
                 spine.set_visible(False)
 
         if show_grid:
-            ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA")
+            ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA", clip_on=False)
         else:
             ax.grid(False)
 
@@ -1116,9 +1119,12 @@ class PlotEngine:
         y_lim_start = get_lim(final_min_y, plot_params["f1_scale"], use_bark_units)
         y_lim_end = get_lim(final_max_y, plot_params["f1_scale"], use_bark_units)
 
-        ax.set_xlim(x_lim_start, x_lim_end)
-        ax.set_ylim(y_lim_start, y_lim_end)
-        ax.margins(0.05)
+        # 마진 추가 (Multi Plot)
+        x_eps = 0.1 if plot_params.get("f2_scale") != "bark" else 0.01
+        y_eps = 0.1 if plot_params.get("f1_scale") != "bark" else 0.001
+        ax.set_xlim(x_lim_start - x_eps, x_lim_end + x_eps)
+        ax.set_ylim(y_lim_start - y_eps, y_lim_end + y_eps)
+        # ax.margins(0.05)
 
         if box_spines:
             for spine in ax.spines.values():
@@ -1130,7 +1136,7 @@ class PlotEngine:
                 spine.set_visible(False)
 
         if show_grid:
-            ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA")
+            ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA", clip_on=False)
         else:
             ax.grid(False)
 
@@ -1327,8 +1333,10 @@ class PlotEngine:
         ax = figure.add_subplot(111)
         ax.set_box_aspect(1)
         ax.set_axisbelow(True)
-        ax.set_xlim(r["x_min"], r["x_max"])
-        ax.set_ylim(r["y_min"], r["y_max"])
+        # 정규화 플롯: 이미 스케일링된 값이므로 극미세 오차(1e-5) 적용
+        eps = 1e-5
+        ax.set_xlim(r["x_min"] - eps, r["x_max"] + eps)
+        ax.set_ylim(r["y_min"] - eps, r["y_max"] + eps)
         ax.invert_xaxis()
         ax.invert_yaxis()
         ax.xaxis.tick_bottom()
@@ -1370,7 +1378,7 @@ class PlotEngine:
             for spine in ax.spines.values():
                 spine.set_visible(False)
         if show_grid:
-            ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA")
+            ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA", clip_on=False)
         else:
             ax.grid(False)
 
@@ -1514,17 +1522,18 @@ class PlotEngine:
                         zorder=3 + z_offset,
                         clip_on=False,
                     )
-                    snapping_data.append(
-                        {
-                            "x": mean_x,
-                            "y": mean_y,
-                            "raw_f1": mean_y,
-                            "raw_f2": mean_x,
-                            "label": f"{vowel} - {file_name}",
-                            "type": "mean",
-                            "color": ell_color,
-                        }
-                    )
+                    if not is_semi:
+                        snapping_data.append(
+                            {
+                                "x": mean_x,
+                                "y": mean_y,
+                                "raw_f1": mean_y,
+                                "raw_f2": mean_x,
+                                "label": f"{vowel} - {file_name}",
+                                "type": "mean",
+                                "color": ell_color,
+                            }
+                        )
 
                 use_custom = vowel in custom_offsets and show_centroid
                 if use_custom:

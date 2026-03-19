@@ -58,8 +58,10 @@ class MainController:
             _loaded = path_prefs.load_path_prefs(_prefs_base)
             if _loaded.get("last_open_dir") and os.path.isdir(_loaded["last_open_dir"]):
                 self.last_open_dir = _loaded["last_open_dir"]
-            if _loaded.get("last_save_dir") and os.path.isdir(_loaded["last_save_dir"]):
-                self.last_save_dir = _loaded["last_save_dir"]
+            # [사용자 요청] 저장 경로는 앱 실행 시마다 '다운로드'로 리셋되도록 로드하지 않음.
+            # (last_save_dir는 None으로 유지되어 fallback인 Downloads가 작동함)
+            # if _loaded.get("last_save_dir") and os.path.isdir(_loaded["last_save_dir"]):
+            #     self.last_save_dir = _loaded["last_save_dir"]
 
         # PyQt6에서는 팝업 창이 가비지 컬렉터(GC)에 의해 증발하는 것을
         # 막기 위해 리스트에 참조를 보관해야 합니다.
@@ -428,7 +430,7 @@ class MainController:
             base,
             {
                 "last_open_dir": self.last_open_dir,
-                "last_save_dir": self.last_save_dir,
+                "last_save_dir": None,  # [사용자 요청] 세션 종료 시 리셋을 위해 저장하지 않음.
             },
         )
 

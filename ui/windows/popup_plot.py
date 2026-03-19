@@ -154,8 +154,6 @@ class SmartDockWidget(QDockWidget):
         super().closeEvent(event)
 
 
-
-
 class PlotPopup(BasePlotWindow):
     """메인 결과 시각화 창 (단일 도크 통합 탭 버전)"""
 
@@ -351,7 +349,6 @@ class PlotPopup(BasePlotWindow):
         self._build_unified_dock()
         self._bind_shortcuts()
         self._update_nav_buttons()
-
 
     def set_initial_plot_state(
         self, fixed_plot_params, plot_data_snapshot, current_idx
@@ -955,9 +952,6 @@ class PlotPopup(BasePlotWindow):
             base += " (이상치 제거 : 2σ)"
         self.setWindowTitle(base)
 
-
-
-
     def _safe_cancel_ruler_or_draw(self):
         if self._is_input_focused():
             return
@@ -968,10 +962,6 @@ class PlotPopup(BasePlotWindow):
             return
         if self.controller.ruler_tool.active:
             self.controller.ruler_tool._cancel_current_drawing()
-
-
-
-
 
     def _safe_toggle_design_lock(self):
         if self._is_input_focused():
@@ -1235,7 +1225,6 @@ class PlotPopup(BasePlotWindow):
             if apply_plot is True:
                 self.on_apply()
 
-
     def _bind_shortcuts(self):
         """Base의 공통 단축키를 상속하고, PlotPopup 전용 T키를 추가로 등록한다.
         T키는 base_plot_window에서 등록하지 않으므로(compare_plot과의 ambiguous 방지) 여기서 직접 연결.
@@ -1274,7 +1263,6 @@ class PlotPopup(BasePlotWindow):
                 self.controller.label_move_tool.active
             )
 
-
     def _is_label_move_active(self):
         btn_on = bool(
             hasattr(self, "design_tab")
@@ -1286,15 +1274,6 @@ class PlotPopup(BasePlotWindow):
             and self.controller.label_move_tool.active
         )
         return btn_on or tool_on
-
-
-
-
-
-
-
-
-
 
     def _ensure_area_label_drag_connected(self):
         """넓이 텍스트 드래그 이동: 그리기 모드가 꺼져 있을 때만 동작."""
@@ -1461,7 +1440,6 @@ class PlotPopup(BasePlotWindow):
                 pass
             self._area_label_cursor_changed = False
 
-
     def _safe_compare_click(self):
         if self._is_input_focused() or not self.btn_compare.isEnabled():
             return
@@ -1556,7 +1534,6 @@ class PlotPopup(BasePlotWindow):
         # overrides 역시 LayerDockWidget에서 popup.layer_design_overrides에 반영된 상태.
         self.on_apply()
 
-
     def on_apply(self):
         self.setFocus()
         self.figure.set_size_inches(6.5, 6.5)
@@ -1566,7 +1543,8 @@ class PlotPopup(BasePlotWindow):
             x_min = float(self.range_widgets["x_min"].text())
             x_max = float(self.range_widgets["x_max"].text())
 
-            y_name, x_name = "F1", self.x_axis_label
+            y_name = "F1"
+            x_name = self.x_axis_label
             if y_min >= y_max:
                 QMessageBox.warning(
                     self,
@@ -1602,17 +1580,13 @@ class PlotPopup(BasePlotWindow):
         # 레이어 도크(모음 목록) 재구성은 파일 전환 시점(_on_file_index_changed 등)에서만 수행한다.
         return True
 
-
     def _on_range_apply_clicked(self):
         """좌표축 범위 '적용' 버튼 전용: 적용 성공 시에만 로그 기록."""
         if self.on_apply():
             app_logger.info(config.LOG_MSG["PLOT_UPDATE"])
 
-
-
     def get_sigma(self):
         return self.cb_sigma.currentText()
-
 
     def open_vowel_filter(self):
         data_list = (

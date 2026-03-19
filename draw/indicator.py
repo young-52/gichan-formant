@@ -1,8 +1,13 @@
-# draw/indicator.py — 그리기 모드 인디케이터 (캔버스 좌측 하단)
-# 텍스트 투명 버튼: 선, 영역, 수평 참조선, 수직 참조선. 아이콘은 추후 QPainter로 교체.
-
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QButtonGroup
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QPushButton,
+    QButtonGroup,
+    QLabel,
+    QGraphicsOpacityEffect,
+    QLayout,
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtGui import QCursor, QFont
 
 
@@ -25,19 +30,28 @@ class DrawModeIndicator(QFrame):
         self.setObjectName("DrawModeIndicator")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(4)
 
-        self._bg_color = (0, 0, 0, 40)
-        self.setStyleSheet(
+        # 외부 레이아웃: 버튼 컨테이너와 힌트 라벨을 나열
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+        # 위젯 크기가 레이아웃 내용물에 맞춰 강제 고정/변동되도록 설정
+        self.layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+
+        # 실제 버튼들이 담길 배경 박스 컨테이너
+        self.button_container = QFrame(self)
+        self.button_container.setObjectName("ButtonContainer")
+        self.button_container.setStyleSheet(
             """
-            DrawModeIndicator {
+            QFrame#ButtonContainer {
                 background-color: rgba(0, 0, 0, 25);
                 border-radius: 4px;
             }
             """
         )
+        self.btn_layout = QHBoxLayout(self.button_container)
+        self.btn_layout.setContentsMargins(6, 4, 6, 4)
+        self.btn_layout.setSpacing(3)
 
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
@@ -50,7 +64,7 @@ class DrawModeIndicator(QFrame):
         ]
         self._buttons = {}
         for text, mode, tooltip in labels:
-            btn = QPushButton(text, self)
+            btn = QPushButton(text, self.button_container)
             btn.setCheckable(True)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setToolTip(tooltip)
@@ -80,14 +94,50 @@ class DrawModeIndicator(QFrame):
             )
             self._group.addButton(btn)
             self._buttons[mode] = btn
-            layout.addWidget(btn)
+            self.btn_layout.addWidget(btn)
+
+        self.layout.addWidget(self.button_container)
+
+        # [사용자 요청] 시각적 힌트 라벨 (Enter 키 안내)
+        self.hint_label = QLabel(self)
+        self.hint_label.setStyleSheet(
+            """
+            QLabel {
+                color: #FFFFFF;
+                background-color: rgba(0, 0, 0, 160);
+                padding: 4px 12px;
+                border-radius: 13px;
+                font-size: 11px;
+                font-family: "Malgun Gothic";
+                margin-left: 10px;
+            }
+            """
+        )
+        self.hint_label.hide()
+
+        # 페이드 아웃 효과 설정
+        self.hint_opacity = QGraphicsOpacityEffect(self.hint_label)
+        self.hint_label.setGraphicsEffect(self.hint_opacity)
+
+        self.hint_timer = QTimer(self)
+        self.hint_timer.setSingleShot(True)
+        self.hint_timer.timeout.connect(self._start_fade_out)
+
+        self.fade_anim = QPropertyAnimation(self.hint_opacity, b"opacity")
+        self.fade_anim.setDuration(800)
+        self.fade_anim.setStartValue(1.0)
+        self.fade_anim.setEndValue(0.0)
+        self.fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.fade_anim.finished.connect(self.hint_label.hide)
+
+        self.layout.addWidget(self.hint_label)
+        self.layout.addStretch()
 
         # "그리기 끄기"용: 모든 버튼이 unchecked일 수 있도록.
         self._group.setExclusive(True)  # 하나만 선택 가능
         # 같은 버튼 다시 누르면 해제 → None 방출
         for mode, btn in self._buttons.items():
             btn.setCheckable(True)
-            # 이미 연결된 lambda에서 같은 버튼을 다시 누르면 checked=False로 들어옴
         self._current_mode = None
 
     def _on_mode_clicked(self, mode: str, checked: bool):
@@ -95,10 +145,41 @@ class DrawModeIndicator(QFrame):
             if self._current_mode != mode:
                 self._current_mode = mode
                 self.mode_changed.emit(mode)
+
+                # [참고] set_mode에서도 힌트를 트리거함
+                self._trigger_hint_by_mode(mode)
         else:
             # 같은 버튼 다시 클릭 → 그리기 끔
             self._current_mode = None
             self.mode_changed.emit(None)
+            self._stop_hint()
+
+    def _trigger_hint_by_mode(self, mode):
+        """특정 모드 진입 시 힌트 표시 여부 결정 및 실행."""
+        if mode in (self.MODE_LINE, self.MODE_POLYGON):
+            self._show_hint("Enter 키를 눌러 그리기를 완료하세요.")
+        else:
+            self._stop_hint()
+
+    def _show_hint(self, text):
+        """2초간 힌트 표시 후 페이드 아웃."""
+        self._stop_hint()
+        self.hint_label.setText(text)
+        self.hint_opacity.setOpacity(1.0)
+        self.hint_label.show()
+        self.adjustSize()  # 위젯 크기를 라벨 포함 크기로 갱신
+        self.hint_timer.start(2000)
+
+    def _stop_hint(self):
+        """현재 진행 중인 힌트 중단 및 숨기기."""
+        self.hint_timer.stop()
+        self.fade_anim.stop()
+        self.hint_label.hide()
+        self.adjustSize()  # 위젯 크기를 버튼 컨테이너 크기로 축소
+
+    def _start_fade_out(self):
+        """페이드 아웃 애니메이션 시작."""
+        self.fade_anim.start()
 
     def get_mode(self):
         """현재 선택된 모드. 없으면 None."""
@@ -117,9 +198,13 @@ class DrawModeIndicator(QFrame):
                 btn.style().polish(btn)
                 btn.repaint()
             self._group.setExclusive(True)
+            self._stop_hint()
         else:
             for m, btn in self._buttons.items():
                 btn.setChecked(m == mode)
+
+            # [사용자 요청] 단축키 등으로 진입 시에도 힌트 표시
+            self._trigger_hint_by_mode(mode)
         self.update()
 
     def turn_off(self):

@@ -76,9 +76,12 @@ out_code = []
 for node in ast.walk(tree):
     if isinstance(node, ast.ClassDef) and node.name == "PlotPopup":
         for body_item in node.body:
-            if isinstance(body_item, ast.FunctionDef) and body_item.name in methods_to_extract:
+            if (
+                isinstance(body_item, ast.FunctionDef)
+                and body_item.name in methods_to_extract
+            ):
                 segment = ast.get_source_segment(source, body_item)
-                
+
                 # Fix indentation
                 lines = segment.splitlines()
                 # first line `def ...` has no indentation in segment.
@@ -89,11 +92,12 @@ for node in ast.walk(tree):
                 # So `lines[0]` is `def ...`, `lines[1]` has 8 spaces.
                 # Let's just prepend 4 spaces ONLY to the first line, so it aligns with 4 spaces.
                 # Wait, if `lines[1]` has 8 spaces, and `lines[0]` has 4 spaces, they are perfectly aligned!
-                
+
                 out_code.append("\n".join(lines))
 
-with open(repo_root / "ui" / "windows" / "base_plot_window.py", "w", encoding="utf-8") as f:
+with open(
+    repo_root / "ui" / "windows" / "base_plot_window.py", "w", encoding="utf-8"
+) as f:
     f.write(base_code)
     f.write("\n\n".join(out_code))
     f.write("\n")
-

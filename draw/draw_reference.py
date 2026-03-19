@@ -20,12 +20,14 @@ REF_LINE_COLOR = "#AAAAAA"
 REF_LINE_ALPHA = 0.3
 
 
-def format_ref_label(value: float, unit: str) -> str:
+def format_ref_label(value: float, unit: str, is_snapped: bool = False) -> str:
     """참조선 라벨. value는 이미 단위(Unit) 기준 저장된 순수 데이터 값."""
     u = (unit or "Hz").strip().lower()
     if u == "norm" or "norm" in u:
         return f"  {value:.2f}"
     if u in ("bk", "bark"):
+        if is_snapped:
+            return f"  {value:.2f}"
         return f"  {value:.1f}"
     return f"  {int(value)}"
 
@@ -49,7 +51,7 @@ def round_ref_value(
     scale: str,
     unit: str | None = None,
     extra_snap_values: list[float] | None = None,
-) -> float:
+) -> tuple[float, bool]:
     """plot_coord(Matplotlib 축 좌표)를 단위(Unit) 기준 데이터 값으로 변환·스냅하여 반환.
     반환값은 항상 사용자 눈금 단위(Hz/Bark/norm) 기준의 순수 데이터 값.
     - unit norm: plot_coord 그대로 소수 둘째 자리 스냅
@@ -81,8 +83,8 @@ def round_ref_value(
         if valid_candidates:
             nearest = min(valid_candidates, key=lambda v: abs(v - raw_data_value))
             if abs(nearest - raw_data_value) <= tol:
-                return nearest
-    return stepped
+                return nearest, True
+    return stepped, False
 
 
 class DrawReferenceTool:
@@ -193,10 +195,10 @@ class DrawReferenceTool:
         if event.key == "escape":
             self._clear_preview()
 
-    def _format_ref_label(self, value: float) -> str:
+    def _format_ref_label(self, value: float, is_snapped: bool = False) -> str:
         """value는 단위(Unit) 기준 순수 데이터 값. 그대로 포맷."""
         unit = self.y_unit if self.horizontal else self.x_unit
-        return format_ref_label(value, unit)
+        return format_ref_label(value, unit, is_snapped)
 
     def _prepare_snap_candidates(self):
         """centroid(mean) 축 값을 단위 기준 데이터 값으로 변환해 스냅 후보로 준비."""
@@ -235,25 +237,27 @@ class DrawReferenceTool:
             return
         ax = event.inaxes
         if self.horizontal:
-            value = round_ref_value(
+            value, is_snapped = round_ref_value(
                 event.ydata,
                 self.y_scale,
                 self.y_unit,
                 extra_snap_values=self._snap_candidates_h,
             )
-            self._draw_preview(value, is_horizontal=True, ax=ax)
+            self._draw_preview(value, is_snapped=is_snapped, is_horizontal=True, ax=ax)
         else:
-            value = round_ref_value(
+            value, is_snapped = round_ref_value(
                 event.xdata,
                 self.x_scale,
                 self.x_unit,
                 extra_snap_values=self._snap_candidates_v,
             )
-            self._draw_preview(value, is_horizontal=False, ax=ax)
+            self._draw_preview(value, is_snapped=is_snapped, is_horizontal=False, ax=ax)
         if self.canvas:
             self.canvas.draw_idle()
 
-    def _draw_preview(self, value: float, is_horizontal: bool, ax=None):
+    def _draw_preview(
+        self, value: float, is_snapped: bool, is_horizontal: bool, ax=None
+    ):
         """value: 단위(Unit) 기준 순수 데이터 값. 선은 축 스케일에 맞는 plot_val로 그림."""
         ax = ax or self._get_ax()
         if ax is None:
@@ -283,7 +287,7 @@ class DrawReferenceTool:
             self._preview_label = ax.text(
                 xlim[0],
                 plot_val,
-                self._format_ref_label(value),
+                self._format_ref_label(value, is_snapped=is_snapped),
                 fontsize=12,
                 fontfamily=self._font_family,
                 color=self._tick_color,
@@ -304,7 +308,7 @@ class DrawReferenceTool:
             self._preview_label = ax.text(
                 plot_val,
                 ylim[0],
-                self._format_ref_label(value),
+                self._format_ref_label(value, is_snapped=is_snapped),
                 fontsize=12,
                 fontfamily=self._font_family,
                 color=self._tick_color,
@@ -323,7 +327,7 @@ class DrawReferenceTool:
         ):
             return
         if self.horizontal:
-            value = round_ref_value(
+            value, is_snapped = round_ref_value(
                 event.ydata,
                 self.y_scale,
                 self.y_unit,
@@ -333,7 +337,7 @@ class DrawReferenceTool:
             axis_name = self.y_name
             axis_scale = self.y_scale
         else:
-            value = round_ref_value(
+            value, is_snapped = round_ref_value(
                 event.xdata,
                 self.x_scale,
                 self.x_unit,

@@ -25,7 +25,7 @@ def get_icon_path():
     # 2. Base64 백업 사용
     temp_dir = tempfile.gettempdir()
     icon_path = os.path.join(temp_dir, "GichanFormant.ico")
-    
+
     if not os.path.exists(icon_path):
         try:
             icon_data = base64.b64decode(ICON_BASE64)
@@ -34,6 +34,7 @@ def get_icon_path():
         except Exception:
             return ""
     return icon_path
+
 
 def get_app_icon():
     """
