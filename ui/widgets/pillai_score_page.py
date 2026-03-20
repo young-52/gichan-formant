@@ -56,7 +56,9 @@ class PillaiHelpTooltip(QWidget):
     """Pillai Score 설명을 위한 커스텀 고퀄리티 툴팁 위젯."""
 
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 

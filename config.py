@@ -11,7 +11,7 @@ GichanFormant 전역 설정 (Configuration)
 # =============================================================================
 # 1. 프로그램 기본 정보 (App Info)
 # =============================================================================
-APP_VERSION = "2.3.2.2"
+APP_VERSION = "2.3.3.2"
 APP_TITLE = f"GichanFormant v{APP_VERSION}"
 AUTHOR = "Bae Gichan"
 COPYRIGHT_TEXT = f"Copyright © 2026 {AUTHOR}. All rights reserved."
@@ -247,6 +247,7 @@ LOG_MSG = {
     "모음별 최소 5개 데이터가 있어야 이상치 제거가 가능합니다. (데이터 수 부족 라벨 예시: {detail})",
     "OUTLIER_NOT_REMOVED_NONE": "[INFO] 이상치 제거 기준을 적용했지만 제거된 데이터 포인트가 없습니다.",
     "PLOT_REFRESH_ERROR": "[ERROR] 플롯 창 갱신 중 오류가 발생했습니다: {e}",
+    "PLOT_REFRESH_FAIL": "[ERROR] 플롯 갱신 실패: {e}",
     "FILE_LOAD_SUMMARY": "[SUCCESS] 총 {new_count}개의 파일이 로드되었습니다. (현재 총 {total_count}개)",
     "FILE_LOAD_ERROR": "[ERROR] {fail_count}개의 파일을 불러오지 못했습니다. (지원하지 않는 형식이거나 데이터 없음)",
     "PLOT_OPEN": "[INFO] {ptype} 플롯이 새 창으로 열렸습니다. (대상: {fname})",

@@ -350,6 +350,25 @@ class PlotPopup(BasePlotWindow):
         self._bind_shortcuts()
         self._update_nav_buttons()
 
+        # 창을 닫을 때 메모리에서 즉시 해제되도록 설정 (Memory Leak 방지)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+    def closeEvent(self, event):
+        """창이 닫힐 때 Matplotlib 자원을 명시적으로 해제합니다."""
+        try:
+            import matplotlib.pyplot as plt
+
+            if hasattr(self, "figure") and self.figure:
+                self.figure.clear()
+                plt.close(self.figure)
+                self.figure = None
+            if hasattr(self, "canvas") and self.canvas:
+                self.canvas.setParent(None)
+                self.canvas = None
+        except Exception as e:
+            app_logger.debug(f"[PlotPopup] 자원 해제 중 오류: {e}")
+        super().closeEvent(event)
+
     def set_initial_plot_state(
         self, fixed_plot_params, plot_data_snapshot, current_idx
     ):

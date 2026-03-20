@@ -686,7 +686,10 @@ class BasePlotWindow(QMainWindow):
                 plot_v = float(hz_to_bark(v))
             else:
                 plot_v = v
-            lbl = format_ref_label(v, axis_units)
+            ref_norm = getattr(self, "normalization", None) or (
+                getattr(self, "fixed_plot_params", None) or {}
+            ).get("normalization")
+            lbl = format_ref_label(v, axis_units, normalization=ref_norm)
             font_family = ["DejaVu Sans", "Malgun Gothic"]
             if _is_serif_font():
                 font_family = ["Times New Roman", "Noto Serif KR", "DejaVu Serif"]
@@ -768,7 +771,7 @@ class BasePlotWindow(QMainWindow):
             y_unit = (params.get("f1_unit") or "Hz").strip()
         x_scale = (params.get("f2_scale") or "linear").strip().lower()
         y_scale = (params.get("f1_scale") or "linear").strip().lower()
-        norm = params.get("normalization")
+        norm = getattr(self, "normalization", None) or params.get("normalization")
         if norm:
             x_name = "nF2"
             y_name = "nF1"
@@ -827,6 +830,7 @@ class BasePlotWindow(QMainWindow):
                 on_cancel=_on_draw_cancel,
                 font_family=font_family,
                 tick_color="#303133",
+                normalization=norm,
             )
         else:
             return

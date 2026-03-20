@@ -638,6 +638,7 @@ class MainController:
 
     def open_single_plot(self):
         """현재 데이터로 시각화 창(PlotPopup)을 생성합니다."""
+        self._cleanup_popups()
         if not self.plot_data_list:
             self.ui.show_warning("데이터 없음", "분석할 데이터를 먼저 로드해 주세요.")
             return
@@ -713,6 +714,7 @@ class MainController:
 
     def open_vowel_analysis_window(self, popup_window):
         """popup_plot 또는 compare_plot의 '모음 상세 분석' 클릭 시 호출. 해당 창의 파일(들)에 대한 분석 창을 연다."""
+        self._cleanup_popups()
         snapshot = getattr(popup_window, "plot_data_snapshot", None)
         params = getattr(popup_window, "fixed_plot_params", None)
         if (
@@ -790,6 +792,7 @@ class MainController:
         self, current_idx, target_idx, normalization=None, parent_window=None
     ):
         """선택된 두 데이터로 다중 비교 시각화 창(ComparePlotPopup)을 생성합니다. normalization: None | 'Lobanov' | 'Gerstman' | '2mW/F' | 'Bigham'"""
+        self._cleanup_popups()
         try:
             fig = Figure(figsize=(6.5, 6.5), dpi=100)
 
@@ -1586,6 +1589,23 @@ class MainController:
     ):
         """플롯 타입·스케일에 따른 축 범위 dict. View/팝업은 이 공개 메서드만 호출."""
         return self._get_smart_ranges(plot_type, use_bark, f1_scale, f2_scale)
+
+    def _cleanup_popups(self):
+        """이미 닫혀서 파괴된 팝업 창들에 대한 참조를 리스트에서 제거합니다."""
+        if not hasattr(self, "open_popups"):
+            return
+        # isVisible()이 False이거나 파이썬 객체가 살아있어도
+        # C++ 객체가 파괴된 경우(RuntimeError 발생 가능) 등을 걸러냅니다.
+        active = []
+        for p in self.open_popups:
+            try:
+                # isVisible() 체크를 통해 닫힌 창(WA_DeleteOnClose가 작동 중인 창 포함) 제외
+                if p and not p.isHidden() and p.isVisible():
+                    active.append(p)
+            except (RuntimeError, AttributeError):
+                # 래퍼만 남고 내부는 이미 파괴된 경우
+                continue
+        self.open_popups = active
 
     # --- 유틸리티 메서드 ---
 

@@ -17,10 +17,9 @@ from PyQt6.QtWidgets import (
     QStyledItemDelegate,
     QStackedWidget,
 )
-from PyQt6.QtCore import Qt, QStandardPaths, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, QStandardPaths, QSize
 from PyQt6.QtGui import QBrush, QColor, QFont, QPen, QKeySequence, QIcon
 import pandas as pd
-from utils.pillai_stats import calculate_pillai_score
 from ui.widgets.pillai_score_page import PillaiScorePage
 from utils.icon_utils import get_app_icon
 from utils.math_utils import calc_f2_prime
@@ -189,6 +188,9 @@ class VowelAnalysisDialog(QDialog):
         self._update_save_buttons_state()  # 초기 상태 반영
         # 탭 변경 시 디폴트(포먼트) 화면으로 리셋
         self.tabs.currentChanged.connect(lambda: self._switch_page(0))
+
+        # 창을 닫을 때 메모리에서 즉시 해제되도록 설정 (Memory Leak 방지)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
     def keyPressEvent(self, event):
         """창 레벨에서 CTRL+C를 감지하여 현재 탭의 테이블 데이터를 복사합니다."""

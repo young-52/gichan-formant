@@ -31,6 +31,19 @@ def _register_assets_fonts():
 
 _register_assets_fonts()
 
+
+def _float_is_multiple_of_step(h: float, step: float, *, tol: float = 1e-5) -> bool:
+    """step이 0.2 등 소수일 때 h % step == 0 비교는 부동소수 오차로 실패할 수 있어 별도 판정."""
+    if step <= 0:
+        return False
+    q = float(h) / float(step)
+    return abs(q - round(q)) < tol
+
+
+def _float_close_to_any(val: float, values: list[float], *, tol: float = 1e-5) -> bool:
+    return any(math.isclose(val, x, abs_tol=tol) for x in values)
+
+
 system_os = platform.system()
 if system_os == "Windows":
     kor_font = "Malgun Gothic"
@@ -1266,8 +1279,8 @@ class PlotEngine:
             "x_max": 1.0,
             "y_min": -1.0,
             "y_max": 1.0,
-            "x_step": 0.5,
-            "y_step": 0.5,
+            "x_step": 0.25,
+            "y_step": 0.25,
         },
     }
 
@@ -1325,7 +1338,14 @@ class PlotEngine:
                 y_min = float(manual_ranges.get("y_min", r["y_min"]))
                 y_max = float(manual_ranges.get("y_max", r["y_max"]))
                 if x_min < x_max and y_min < y_max:
-                    r = {"x_min": x_min, "x_max": x_max, "y_min": y_min, "y_max": y_max}
+                    r = {
+                        "x_min": x_min,
+                        "x_max": x_max,
+                        "y_min": y_min,
+                        "y_max": y_max,
+                        "x_step": r.get("x_step", 0.5),
+                        "y_step": r.get("y_step", 0.5),
+                    }
             except (ValueError, TypeError):
                 pass
         # 정규화 비교에서도 세로 중심이 유지되도록 위/아래 여백을 대칭에 가깝게 설정 (상하좌우 +0.02)
@@ -1381,6 +1401,30 @@ class PlotEngine:
             ax.grid(True, linestyle="-", alpha=0.3, color="#AAAAAA", clip_on=False)
         else:
             ax.grid(False)
+
+        # 축 눈금 설정(Step 적용)
+        self._set_ticks(
+            ax,
+            "x",
+            "linear",
+            r["x_min"],
+            r["x_max"],
+            r["x_step"],
+            r["x_step"],
+            False,
+            common.get("show_minor_ticks", True),
+        )
+        self._set_ticks(
+            ax,
+            "y",
+            "linear",
+            r["y_min"],
+            r["y_max"],
+            r["y_step"],
+            r["y_step"],
+            False,
+            common.get("show_minor_ticks", True),
+        )
 
         snapping_data = []
         label_data_blue = []
@@ -1840,16 +1884,26 @@ class PlotEngine:
                     first_tick, last_tick + step_minor * 0.1, step_minor
                 )
 
-            major_hz = [h for h in all_ticks_hz if h % step_major == 0]
+            major_hz = [
+                h
+                for h in all_ticks_hz
+                if _float_is_multiple_of_step(float(h), float(step_major))
+            ]
             minor_hz = (
-                [h for h in all_ticks_hz if h % step_major != 0]
+                [
+                    h
+                    for h in all_ticks_hz
+                    if not _float_is_multiple_of_step(float(h), float(step_major))
+                ]
                 if show_minor_ticks
                 else []
             )
 
-            if start_val not in major_hz:
+            if not _float_close_to_any(float(start_val), [float(x) for x in major_hz]):
                 boundary_vals.append(start_val)
-            if end_val not in major_hz and end_val != start_val:
+            if end_val != start_val and not _float_close_to_any(
+                float(end_val), [float(x) for x in major_hz]
+            ):
                 boundary_vals.append(end_val)
 
             all_major_hz = sorted(major_hz + boundary_vals)
@@ -1857,9 +1911,13 @@ class PlotEngine:
             major_val = [self._apply_scale(h, scale_type) for h in all_major_hz]
             minor_val = [self._apply_scale(h, scale_type) for h in minor_hz]
 
-            labels = [
-                str(int(h)) if float(h).is_integer() else str(h) for h in all_major_hz
-            ]
+            labels = []
+            for h in all_major_hz:
+                hf = round(float(h), 6)
+                if float(hf).is_integer():
+                    labels.append(str(int(hf)))
+                else:
+                    labels.append(f"{hf:g}")
             tick_values = all_major_hz
 
         if axis_name == "x":
@@ -1871,7 +1929,7 @@ class PlotEngine:
                 ax.xaxis.minorticks_off()
             if boundary_vals:
                 for lbl_obj, h in zip(labels_obj, tick_values):
-                    if h in boundary_vals:
+                    if _float_close_to_any(float(h), [float(b) for b in boundary_vals]):
                         lbl_obj.set_color("gray")
         else:
             ax.set_yticks(major_val)
@@ -1882,7 +1940,7 @@ class PlotEngine:
                 ax.yaxis.minorticks_off()
             if boundary_vals:
                 for lbl_obj, h in zip(labels_obj, tick_values):
-                    if h in boundary_vals:
+                    if _float_close_to_any(float(h), [float(b) for b in boundary_vals]):
                         lbl_obj.set_color("gray")
 
     def _get_axis_name(self, plot_type):

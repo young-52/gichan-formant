@@ -20,10 +20,18 @@ REF_LINE_COLOR = "#AAAAAA"
 REF_LINE_ALPHA = 0.3
 
 
-def format_ref_label(value: float, unit: str, is_snapped: bool = False) -> str:
+def format_ref_label(
+    value: float,
+    unit: str,
+    is_snapped: bool = False,
+    normalization: str | None = None,
+) -> str:
     """참조선 라벨. value는 이미 단위(Unit) 기준 저장된 순수 데이터 값."""
     u = (unit or "Hz").strip().lower()
     if u == "norm" or "norm" in u:
+        norm_str = str(normalization or "").strip().lower()
+        if "gerstman" in norm_str:
+            return f"  {int(round(float(value)))}"
         return f"  {value:.2f}"
     if u in ("bk", "bark"):
         if is_snapped:
@@ -51,6 +59,7 @@ def round_ref_value(
     scale: str,
     unit: str | None = None,
     extra_snap_values: list[float] | None = None,
+    normalization: str | None = None,
 ) -> tuple[float, bool]:
     """plot_coord(Matplotlib 축 좌표)를 단위(Unit) 기준 데이터 값으로 변환·스냅하여 반환.
     반환값은 항상 사용자 눈금 단위(Hz/Bark/norm) 기준의 순수 데이터 값.
@@ -62,29 +71,54 @@ def round_ref_value(
     u = (unit or "").strip().lower() if unit else ""
     s = (scale or "linear").strip().lower()
     raw_data_value = _plot_coord_to_data_value(plot_coord, s, u)
+    norm_str = str(normalization or "").strip().lower() if u == "norm" else ""
 
     if u == "norm":
-        stepped = round(raw_data_value, 2)
-        tol = 0.01
+        if "lobanov" in norm_str:
+            stepped = round(raw_data_value * 10.0) / 10.0
+            tol = 0.05
+        elif "gerstman" in norm_str:
+            stepped = round(raw_data_value / 10.0) * 10.0
+            tol = 5.0
+        elif any(x in norm_str for x in ("2mw", "bigham", "nearey")):
+            # 2mW/F, Bigham, Nearey1 모두 0.05 단위
+            stepped = round(raw_data_value * 20.0) / 20.0
+            tol = 0.02
+        else:
+            stepped = round(raw_data_value, 2)
+            tol = 0.01
     elif s == "bark" and u in ("bk", "bark"):
         stepped = round(raw_data_value, 1)
         tol = 0.05
     else:
-        stepped = round(raw_data_value / 10.0) * 10.0
-        tol = 5.0
+        # Gerstman이 u != "norm"인 경우(드문 케이스)에도 대비
+        if normalization == "Gerstman":
+            stepped = round(raw_data_value / 10.0) * 10.0
+            tol = 5.0
+        else:
+            stepped = round(raw_data_value / 10.0) * 10.0
+            tol = 5.0
 
     if extra_snap_values:
         valid_candidates = []
         for v in extra_snap_values:
             try:
                 valid_candidates.append(float(v))
-            except Exception:
+            except (ValueError, TypeError):
                 continue
         if valid_candidates:
             nearest = min(valid_candidates, key=lambda v: abs(v - raw_data_value))
             if abs(nearest - raw_data_value) <= tol:
+                if u == "norm" and "gerstman" in norm_str:
+                    return float(int(round(float(nearest)))), True
                 return nearest, True
-    return stepped, False
+
+    # 명시적 스냅 (그리드 스냅): stepped가 이미 반올림되었으므로 그냥 반환하면 된다.
+    # is_snapped=True를 반환해야 라벨 포맷 등에서 이득을 볼 수 있음.
+    # 단, norm이 아닌 일반 Hz 등에서는 10단위 반올림이 이미 snapped 상태라고 볼 수 있다.
+    if u == "norm" and "gerstman" in norm_str:
+        return float(int(round(float(stepped)))), True
+    return stepped, True
 
 
 class DrawReferenceTool:
@@ -106,6 +140,7 @@ class DrawReferenceTool:
         on_cancel: Callable[[], None] | None = None,
         font_family: list | None = None,
         tick_color: str | None = None,
+        normalization: str | None = None,
     ):
         self.canvas = canvas
         self.ax = ax
@@ -121,6 +156,7 @@ class DrawReferenceTool:
         self.on_cancel = on_cancel
         self._font_family = font_family or ["DejaVu Sans", "Malgun Gothic"]
         self._tick_color = tick_color or "#303133"
+        self.normalization = normalization
 
         self._preview_line = None
         self._preview_label = None
@@ -198,7 +234,9 @@ class DrawReferenceTool:
     def _format_ref_label(self, value: float, is_snapped: bool = False) -> str:
         """value는 단위(Unit) 기준 순수 데이터 값. 그대로 포맷."""
         unit = self.y_unit if self.horizontal else self.x_unit
-        return format_ref_label(value, unit, is_snapped)
+        return format_ref_label(
+            value, unit, is_snapped, normalization=self.normalization
+        )
 
     def _prepare_snap_candidates(self):
         """centroid(mean) 축 값을 단위 기준 데이터 값으로 변환해 스냅 후보로 준비."""
@@ -242,6 +280,7 @@ class DrawReferenceTool:
                 self.y_scale,
                 self.y_unit,
                 extra_snap_values=self._snap_candidates_h,
+                normalization=self.normalization,
             )
             self._draw_preview(value, is_snapped=is_snapped, is_horizontal=True, ax=ax)
         else:
@@ -250,6 +289,7 @@ class DrawReferenceTool:
                 self.x_scale,
                 self.x_unit,
                 extra_snap_values=self._snap_candidates_v,
+                normalization=self.normalization,
             )
             self._draw_preview(value, is_snapped=is_snapped, is_horizontal=False, ax=ax)
         if self.canvas:
@@ -332,6 +372,7 @@ class DrawReferenceTool:
                 self.y_scale,
                 self.y_unit,
                 extra_snap_values=self._snap_candidates_h,
+                normalization=self.normalization,
             )
             axis_units = self.y_unit
             axis_name = self.y_name
@@ -342,6 +383,7 @@ class DrawReferenceTool:
                 self.x_scale,
                 self.x_unit,
                 extra_snap_values=self._snap_candidates_v,
+                normalization=self.normalization,
             )
             axis_units = self.x_unit
             axis_name = self.x_name

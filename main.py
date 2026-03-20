@@ -2,11 +2,15 @@
 
 import sys
 import platform
-from PyQt6.QtWidgets import QApplication
+import os
+from PyQt6.QtWidgets import QApplication, QSplashScreen
+from PyQt6.QtGui import QPixmap, QFont, QColor
+from PyQt6.QtCore import Qt
 
 import config
 import app_logger
 from utils import icon_utils
+from core import preloader
 from core.controller import MainController
 
 if __name__ == "__main__":
@@ -26,6 +30,50 @@ if __name__ == "__main__":
     app.setOrganizationName(config.AUTHOR)
     app.setOrganizationDomain("com.gichan.formant")
 
+    # 1. 스플래시 스크린 설정 (크기 조절 가능하도록 변수화)
+    SPLASH_WIDTH = 450
+    splash_pix = QPixmap(os.path.join("assets", "GichanFormant_SplashScreen.jpg"))
+
+    # DPI 대응 리사이징
+    dpr = app.primaryScreen().devicePixelRatio()
+    scaled_pix = splash_pix.scaledToWidth(
+        int(SPLASH_WIDTH * dpr), Qt.TransformationMode.SmoothTransformation
+    )
+    scaled_pix.setDevicePixelRatio(dpr)
+
+    # 커스텀 클래스로 버전 정보 상시 표시 및 테두리 제거 해결
+    class VersionSplashScreen(QSplashScreen):
+        def __init__(self, pixmap, version):
+            # FramelessWindowHint와 함께 배경 투명화 속성을 부여하여 테두리/배경색 문제를 원천 봉쇄합니다.
+            super().__init__(
+                pixmap,
+                Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint,
+            )
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setStyleSheet("background: transparent; border: none;")
+            self.version = version
+            self.version_font = QFont("Malgun Gothic", 9)
+
+        def drawContents(self, painter):
+            # 1. 기본 메시지(Ready... 등) 그리기
+            super().drawContents(painter)
+            # 2. 우측 상단에 버전 정보 겹쳐서 그리기 (강제로 흰색 펜 설정)
+            painter.setRenderHint(painter.RenderHint.Antialiasing)
+            painter.setPen(QColor("white"))
+            painter.setFont(self.version_font)
+            # 여백을 주어 우측 상단에 배치
+            painter.drawText(
+                self.rect().adjusted(0, 10, -15, 0),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                self.version,
+            )
+
+    splash = VersionSplashScreen(scaled_pix, f"Version {config.APP_VERSION}")
+
+    # 2. 스플래시 표시
+    splash.show()
+    app.processEvents()
+
     # 전역 앱 레벨에서 아이콘 적용
     try:
         app.setWindowIcon(icon_utils.get_app_icon())
@@ -33,5 +81,17 @@ if __name__ == "__main__":
         pass
 
     app_logger.set_min_level_from_env()
+
+    # 3. 라이브러리 및 엔진 사전 로딩 (스플래시 업데이트 포함)
+    preloader.warm_up(splash)
+
+    # 4. 메인 컨트롤러 생성 및 실행
     controller = MainController()
+
+    # 메인 윈도우가 준비되면 스플래시 종료
+    if hasattr(controller, "ui") and controller.ui:
+        splash.finish(controller.ui)
+    else:
+        splash.close()
+
     sys.exit(app.exec())

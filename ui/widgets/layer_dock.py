@@ -113,7 +113,7 @@ class TabBarWheelBlocker(QObject):
         return False
 
 
-def _draw_object_display_name(draw_objects, index):
+def _draw_object_display_name(draw_objects, index, normalization=None):
     """그리기 객체의 레이어 목록 표시명. 선 N : a-e-o, 영역 N : o-e-a-o, 참조선 X/Y=..."""
     if not draw_objects or index < 0 or index >= len(draw_objects):
         return ""
@@ -173,7 +173,10 @@ def _draw_object_display_name(draw_objects, index):
             axis_name = "nF2" if is_norm else "F2"
         unit = (getattr(obj, "axis_units", "Hz") or "Hz").strip().lower()
         if unit == "norm" or "norm" in unit:
-            s = f"{v:.2f}"
+            if "gerstman" in str(normalization or "").strip().lower():
+                s = f"{int(round(float(v)))}"
+            else:
+                s = f"{v:.2f}"
         elif unit in ("bk", "bark"):
             s = f"{v:.1f}"
         else:
@@ -933,7 +936,14 @@ class LayerDockWidget(QWidget):
         name_layout.setSpacing(4)
         font_name = QFont(self.ui_font_name)
         font_name.setPointSizeF(8)
-        full_name = _draw_object_display_name(draw_objects, draw_index)
+        full_name = _draw_object_display_name(
+            draw_objects,
+            draw_index,
+            normalization=getattr(self.popup, "normalization", None)
+            or (getattr(self.popup, "fixed_plot_params", None) or {}).get(
+                "normalization"
+            ),
+        )
         name_btn = QPushButton()
         name_btn.setFont(font_name)
         _elide_width = 200
@@ -1774,7 +1784,14 @@ class LayerDockWidget(QWidget):
                     row.setProperty("selected", is_selected)
                     # 이름 등 최소한의 정보만 업데이트
                     if hasattr(row, "name_btn"):
-                        full_name = _draw_object_display_name(draw_objects, i)
+                        full_name = _draw_object_display_name(
+                            draw_objects,
+                            i,
+                            normalization=getattr(self.popup, "normalization", None)
+                            or (
+                                getattr(self.popup, "fixed_plot_params", None) or {}
+                            ).get("normalization"),
+                        )
                         prefix = (
                             "  ↳ " if getattr(obj, "type", "") == "area_label" else ""
                         )

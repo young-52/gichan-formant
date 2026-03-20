@@ -439,6 +439,38 @@ class ComparePlotPopup(BasePlotWindow):
         self._setup_ui(data_blue, data_red)
         self._bind_shortcuts()
 
+        # 창을 닫을 때 메모리에서 즉시 해제되도록 설정 (Memory Leak 방지)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+    def closeEvent(self, event):
+        """창이 닫힐 때 Matplotlib 자원을 명시적으로 해제하고 다른 상태들을 정리합니다."""
+        if hasattr(self, "controller") and self.controller:
+            if (
+                hasattr(self.controller, "ruler_tool")
+                and self.controller.ruler_tool.active
+            ):
+                self.controller.toggle_ruler(self)
+
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            self.btn_draw.setChecked(False)
+
+        self._draw_tool_deactivate()
+
+        try:
+            import matplotlib.pyplot as plt
+
+            if hasattr(self, "figure") and self.figure:
+                self.figure.clear()
+                plt.close(self.figure)
+                self.figure = None
+            if hasattr(self, "canvas") and self.canvas:
+                self.canvas.setParent(None)
+                self.canvas = None
+        except Exception as e:
+            app_logger.debug(f"[ComparePlotPopup] 자원 해제 중 오류: {e}")
+
+        super().closeEvent(event)
+
     def get_filter_state_blue(self):
         return self.vowel_filter_state_blue
 
@@ -1211,54 +1243,6 @@ class ComparePlotPopup(BasePlotWindow):
             self._layer_dock_blue.refresh_design_ui()
         if hasattr(self, "_layer_dock_red") and self._layer_dock_red:
             self._layer_dock_red.refresh_design_ui()
-
-    def closeEvent(self, event):
-        if self.controller.ruler_tool.active:
-            self.controller.toggle_ruler(self)
-        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
-            self.btn_draw.setChecked(False)
-        self._draw_tool_deactivate()
-        if (
-            hasattr(self, "_click_clear_focus_filter")
-            and self._click_clear_focus_filter is not None
-        ):
-            try:
-                QApplication.instance().removeEventFilter(
-                    self._click_clear_focus_filter
-                )
-            except Exception:
-                pass
-            self._click_clear_focus_filter = None
-
-        try:
-            # 창이 닫힐 때 이 팝업과 연결된 모든 라벨 오프셋을 완전히 제거
-            if hasattr(self.controller, "clear_label_offsets_for_popup"):
-                self.controller.clear_label_offsets_for_popup(self)
-
-            if self.filter_panel is not None and self.filter_panel.isVisible():
-                self.filter_panel.close()
-
-            if hasattr(self, "dock_widget") and self.dock_widget:
-                self.dock_widget.close()
-            if hasattr(self, "layer_dock_widget") and self.layer_dock_widget:
-                self.layer_dock_widget.close()
-                self.layer_dock_widget.deleteLater()
-                self.layer_dock_widget = None
-
-            if hasattr(self.controller, "remove_popup"):
-                self.controller.remove_popup(self)
-
-            # Matplotlib Figure/Canvas 명시적 해제로 메모리 누수 방지
-            if hasattr(self, "figure") and self.figure is not None:
-                self.figure.clear()
-                self.figure = None
-            if hasattr(self, "canvas") and self.canvas is not None:
-                self.canvas.deleteLater()
-                self.canvas = None
-        except Exception:
-            pass
-
-        event.accept()
 
     # ── 단축키 ────────────────────────────────────────────────────────────────
     def _bind_shortcuts(self):

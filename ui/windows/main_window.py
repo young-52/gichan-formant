@@ -116,9 +116,6 @@ class MainUI(QMainWindow):
                 background-color: #f5f5f5; color: #bbbbbb; border: 1px solid #eeeeee; 
             }
 
-            /* 체크박스 전역 색상 지정 (비활성화 시 색상 변경 적용을 위해) */
-            QCheckBox { color: #606266; }
-            QCheckBox:disabled { color: #bbbbbb; }
 
             /* QMessageBox 버튼 비정상적 크기 문제 해결 (padding 및 최소 너비 조정) */
             QMessageBox QPushButton { min-width: 80px; padding: 5px 15px; }
@@ -360,12 +357,15 @@ class MainUI(QMainWindow):
             origin_h.addWidget(btn, stretch=1)
         scale_grid.addLayout(origin_h, 2, 1, 1, 3)
 
+        # 체크박스: 네이티브 렌더링 유지 및 왼쪽 잘림 방지를 위해 레이아웃 레벨에서 마진 부여
+        chk_container = QWidget()
+        chk_layout = QHBoxLayout(chk_container)
+        chk_layout.setContentsMargins(6, 0, 0, 0)  # 6px 왼쪽 여백
+        chk_layout.setSpacing(0)
         self.chk_bark_units = QCheckBox("정수 Bark 단위 눈금 사용")
         self.chk_bark_units.setFont(QFont(self.ui_font_name, 8))
-        self.chk_bark_units.setStyleSheet(
-            "margin-top: 2px; padding-bottom: 1px; max-height: 18px;"
-        )
-        scale_grid.addWidget(self.chk_bark_units, 3, 1, 1, 3)
+        chk_layout.addWidget(self.chk_bark_units)
+        scale_grid.addWidget(chk_container, 3, 1, 1, 3)
 
         scale_grid.setColumnStretch(1, 1)
         scale_grid.setColumnStretch(2, 1)
