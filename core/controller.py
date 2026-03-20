@@ -55,14 +55,20 @@ class MainController:
         _loaded_prefs = context.get("path_prefs")
 
         if _loaded_prefs:
-            if _loaded_prefs.get("last_open_dir") and os.path.isdir(_loaded_prefs["last_open_dir"]):
+            if _loaded_prefs.get("last_open_dir") and os.path.isdir(
+                _loaded_prefs["last_open_dir"]
+            ):
                 self.last_open_dir = _loaded_prefs["last_open_dir"]
         else:
             # context가 없거나 prefs가 없으면 직접 로딩 시도 (폴더가 존재할 때만 반영)
-            _prefs_base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+            _prefs_base = QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.AppDataLocation
+            )
             if _prefs_base:
                 _loaded = path_prefs.load_path_prefs(_prefs_base)
-                if _loaded.get("last_open_dir") and os.path.isdir(_loaded["last_open_dir"]):
+                if _loaded.get("last_open_dir") and os.path.isdir(
+                    _loaded["last_open_dir"]
+                ):
                     self.last_open_dir = _loaded["last_open_dir"]
 
         # PyQt6에서는 팝업 창이 가비지 컬렉터(GC)에 의해 증발하는 것을
@@ -76,7 +82,9 @@ class MainController:
         # 사전 초기화된 엔진 재사용
         self.data_processor = context.get("data_processor") or DataProcessor()
         self.plot_engine = context.get("plot_engine") or PlotEngine()
-        self.live_preview_fig = context.get("live_preview_fig") or Figure(figsize=(6.5, 6.5), dpi=150)
+        self.live_preview_fig = context.get("live_preview_fig") or Figure(
+            figsize=(6.5, 6.5), dpi=150
+        )
 
         # LIVE 미리보기 디바운스: 연속 호출 시 마지막 한 번만 렌더 (메인 스레드 블로킹 완화)
         self._live_preview_timer = QTimer()

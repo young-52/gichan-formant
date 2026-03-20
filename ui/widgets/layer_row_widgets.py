@@ -21,8 +21,14 @@ class _RowClickForwarder(QObject):
             event.type() == QEvent.Type.MouseButtonPress
             and event.button() == Qt.MouseButton.LeftButton
         ):
-            if self._callback:
-                self._callback()
+            # 자식 위젯(버튼 등)이 없는 빈 공간을 클릭했을 때만 처리
+            if (
+                hasattr(obj, "childAt")
+                and obj.childAt(event.position().toPoint()) is None
+            ):
+                if self._callback:
+                    # 클릭이 발생한 "그 순간"의 키보드 상태를 캡처하여 전달
+                    self._callback(event.modifiers())
         return False
 
 
@@ -54,27 +60,71 @@ class _LayerRowFrame(QFrame):
     def _start_drag(self):
         self._drag_pending = False
         mime = QMimeData()
-        mime.setData(LAYER_ROW_MIME_TYPE, QByteArray(self._build_drag_payload()))
+        payload = self._build_drag_payload()
+        mime.setData(LAYER_ROW_MIME_TYPE, QByteArray(payload))
         drag = QDrag(self)
         drag.setMimeData(mime)
 
-        # 원본 스냅샷 획득
-        pix = self.grab()
+        # 1. 다중 선택 여부에 따라 스택 이미지 생성
+        dock = self._dock
+        selected_vowels = list(dock._selected_vowels)
+        if self._vowel in selected_vowels and len(selected_vowels) > 1:
+            # 표시 순서대로 정렬하여 상위 3개만 시각적으로 겹침 표시
+            ordered = dock._get_ordered_vowels_for_display(
+                list(dock._layer_rows.keys())
+            )
+            drag_items = sorted(selected_vowels, key=lambda v: ordered.index(v))
+            show_items = drag_items[:3]  # 최대 3개까지만 겹침 표시
 
-        # 반투명 처리된 새 Pixmap 생성
-        out_pix = pix.copy()
-        painter = QPainter(out_pix)
-        painter.setCompositionMode(
-            QPainter.CompositionMode.CompositionMode_DestinationIn
-        )
-        painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))  # 약 70% 불투명도
-        painter.end()
+            # 스택용 Pixmap 크기 계산 (개당 6px씩 어긋남)
+            base_pix = self.grab()
+            offset = 6
+            stack_w = base_pix.width() + (len(show_items) - 1) * offset
+            stack_h = base_pix.height() + (len(show_items) - 1) * offset
+            from PyQt6.QtGui import QPixmap
+
+            out_pix = QPixmap(stack_w, stack_h)
+            out_pix.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(out_pix)
+
+            # 뒤에서부터 앞으로 그림 (0번이 가장 위에 오도록)
+            for i, v in enumerate(reversed(show_items)):
+                idx = len(show_items) - 1 - i
+                row_frame = dock._layer_rows.get(v)
+                if row_frame:
+                    p = row_frame.grab()
+                    painter.drawPixmap(idx * offset, idx * offset, p)
+                    # 구분을 위한 얇은 테두리 추가
+                    painter.setPen(QPen(QColor("#DCDFE6"), 1))
+                    painter.drawRect(
+                        idx * offset, idx * offset, p.width() - 1, p.height() - 1
+                    )
+
+            # 전체 반투명 처리
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_DestinationIn
+            )
+            painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))
+            painter.end()
+        else:
+            # 단일 선택: 기존 로직 유지
+            pix = self.grab()
+            out_pix = pix.copy()
+            painter = QPainter(out_pix)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_DestinationIn
+            )
+            painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))
+            painter.end()
 
         drag.setPixmap(out_pix)
         if self._drag_start_pos_local is not None:
             drag.setHotSpot(self._drag_start_pos_local)
         else:
-            drag.setHotSpot(QPointF(pix.width() / 2, pix.height() / 2).toPoint())
+            drag.setHotSpot(
+                QPointF(out_pix.width() / 2, out_pix.height() / 2).toPoint()
+            )
+
         self._dock._hide_drop_indicator()
         drag.exec(Qt.DropAction.MoveAction)
         self._dock._hide_drop_indicator()
@@ -200,27 +250,76 @@ class _DrawLayerRowFrame(QFrame):
 
     def _start_drag(self):
         mime = QMimeData()
-        mime.setData(DRAW_ROW_MIME_TYPE, QByteArray(self._build_drag_payload()))
+        payload = self._build_drag_payload()
+        mime.setData(DRAW_ROW_MIME_TYPE, QByteArray(payload))
         drag = QDrag(self)
         drag.setMimeData(mime)
 
-        # 원본 스냅샷 획득
-        pix = self.grab()
+        # 1. 다중 선택 여부에 따라 스택 이미지 생성
+        dock = self._dock
+        sel = getattr(dock, "_selected_draw_indices", set())
+        if self._draw_index in sel and len(sel) > 1:
+            # 인덱스 순서대로 정렬하여 상위 3개만 시각적으로 겹침 표시
+            drag_items = sorted(list(sel))
+            show_items = drag_items[:3]
+            rows = getattr(dock, "_draw_layer_rows", [])
 
-        # 반투명 처리
-        out_pix = pix.copy()
-        painter = QPainter(out_pix)
-        painter.setCompositionMode(
-            QPainter.CompositionMode.CompositionMode_DestinationIn
-        )
-        painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))
-        painter.end()
+            base_pix = self.grab()
+            offset = 6
+            stack_w = base_pix.width() + (len(show_items) - 1) * offset
+            stack_h = base_pix.height() + (len(show_items) - 1) * offset
+            from PyQt6.QtGui import QPixmap
+
+            out_pix = QPixmap(stack_w, stack_h)
+            out_pix.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(out_pix)
+
+            # 뒤에서부터 앞으로 그림
+            for i, idx in enumerate(reversed(show_items)):
+                # idx에 해당하는 row_frame 찾기
+                row_frame = None
+                for r in rows:
+                    if getattr(r, "_draw_index", -1) == idx:
+                        row_frame = r
+                        break
+
+                if row_frame:
+                    p = row_frame.grab()
+                    offset_idx = len(show_items) - 1 - i
+                    painter.drawPixmap(offset_idx * offset, offset_idx * offset, p)
+                    # 구분을 위한 얇은 테두리 추가
+                    painter.setPen(QPen(QColor("#DCDFE6"), 1))
+                    painter.drawRect(
+                        offset_idx * offset,
+                        offset_idx * offset,
+                        p.width() - 1,
+                        p.height() - 1,
+                    )
+
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_DestinationIn
+            )
+            painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))
+            painter.end()
+        else:
+            # 단일 선택: 기존 로직
+            pix = self.grab()
+            out_pix = pix.copy()
+            painter = QPainter(out_pix)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_DestinationIn
+            )
+            painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))
+            painter.end()
 
         drag.setPixmap(out_pix)
         if self._drag_start_pos_local is not None:
             drag.setHotSpot(self._drag_start_pos_local)
         else:
-            drag.setHotSpot(QPointF(pix.width() / 2, pix.height() / 2).toPoint())
+            drag.setHotSpot(
+                QPointF(out_pix.width() / 2, out_pix.height() / 2).toPoint()
+            )
+
         self._dock._hide_draw_drop_indicator()
         drag.exec(Qt.DropAction.MoveAction)
         self._dock._hide_draw_drop_indicator()
@@ -265,15 +364,6 @@ class _DrawLayerRowFrame(QFrame):
             self._start_drag()
         else:
             super().mouseMoveEvent(event)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if self.property("selected") in (True, "true"):
-            rect = self.rect()
-            painter = QPainter(self)
-            painter.setPen(QPen(QColor("#4A90E2"), 3))
-            painter.drawLine(rect.left(), rect.top(), rect.left(), rect.bottom())
-            painter.end()
 
 
 class _DrawListDropArea(QWidget):

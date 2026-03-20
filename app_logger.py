@@ -3,9 +3,11 @@
 로그 채널 추상화 및 레벨 분리.
 - info / warning / error: 사용자용 메시지 → GUI + (설정에 따라) 콘솔/파일
 - debug: 개발용 상세 → 콘솔/파일만, GUI 제외
+- [Dual-Layer]: 내부적으로 표준 logging 모듈을 호출하여 백그라운드 기록을 병행합니다.
 """
 
 import os
+import logging
 
 # 레벨 상수 (숫자가 클수록 심각)
 DEBUG = 0
@@ -20,6 +22,9 @@ _console = False
 _min_level = INFO
 # GUI에 기록할 최소 레벨. DEBUG는 GUI에 안 넣음
 _gui_min_level = INFO
+
+# 백그라운드용 표준 로거 인스턴스
+_logger = logging.getLogger("GichanFormant")
 
 
 def set_ui(ui):
@@ -61,6 +66,13 @@ def set_min_level_from_env():
 def _write(msg, level):
     if not msg:
         return
+
+    # 1. [Dual-Layer] 백그라운드 표준 로깅 연동
+    # app_logger 레벨을 logging 모듈 레벨로 매핑
+    lvl_map = {DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40}
+    _logger.log(lvl_map.get(level, 20), msg)
+
+    # 2. [GUI/기존 로직] 기존 출력 방식 유지 (포맷 100% 동일 보장)
     line = msg.rstrip() + "\n"
     # GUI: INFO 이상만
     if level >= _gui_min_level and _ui is not None and hasattr(_ui, "append_log"):

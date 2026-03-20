@@ -739,6 +739,45 @@ class ComparePlotPopup(BasePlotWindow):
         vbar_blue.valueChanged.connect(_sync_scroll_to_red)
         vbar_red.valueChanged.connect(_sync_scroll_to_blue)
 
+        # Blue/Red 레이어 목록(Vowel List / Draw List) 스크롤 동기화
+        vbar_v_blue = self._layer_dock_blue.layer_scroll.verticalScrollBar()
+        vbar_v_red = self._layer_dock_red.layer_scroll.verticalScrollBar()
+        vbar_d_blue = self._layer_dock_blue._draw_layer_scroll.verticalScrollBar()
+        vbar_d_red = self._layer_dock_red._draw_layer_scroll.verticalScrollBar()
+
+        def _sync_v_to_red(value):
+            if self._layer_scroll_sync_block:
+                return
+            self._layer_scroll_sync_block = True
+            vbar_v_red.setValue(value)
+            self._layer_scroll_sync_block = False
+
+        def _sync_v_to_blue(value):
+            if self._layer_scroll_sync_block:
+                return
+            self._layer_scroll_sync_block = True
+            vbar_v_blue.setValue(value)
+            self._layer_scroll_sync_block = False
+
+        def _sync_d_to_red(value):
+            if self._layer_scroll_sync_block:
+                return
+            self._layer_scroll_sync_block = True
+            vbar_d_red.setValue(value)
+            self._layer_scroll_sync_block = False
+
+        def _sync_d_to_blue(value):
+            if self._layer_scroll_sync_block:
+                return
+            self._layer_scroll_sync_block = True
+            vbar_d_blue.setValue(value)
+            self._layer_scroll_sync_block = False
+
+        vbar_v_blue.valueChanged.connect(_sync_v_to_red)
+        vbar_v_red.valueChanged.connect(_sync_v_to_blue)
+        vbar_d_blue.valueChanged.connect(_sync_d_to_red)
+        vbar_d_red.valueChanged.connect(_sync_d_to_blue)
+
         self.layer_dock_widget.setWidget(self._layer_dock_container)
         self.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea, self.layer_dock_widget

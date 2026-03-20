@@ -34,20 +34,25 @@ def warm_up(splash=None):
         if splash:
             from PyQt6.QtCore import Qt
             from PyQt6.QtGui import QColor
+
             splash.showMessage(
                 msg,
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
                 QColor("white"),
             )
             from PyQt6.QtWidgets import QApplication
+
             QApplication.processEvents()
             time.sleep(0.02)  # 사용자 가독성을 위한 아주 미세한 지연
 
     # 1. 라이브러리 사전 임포트
+    import sys
+
     for lib_name in HEAVY_LIBS:
         _update_msg(f"Loading {lib_name}...")
         try:
-            importlib.get_module(lib_name) if lib_name in importlib.sys.modules else importlib.import_module(lib_name)
+            if lib_name not in sys.modules:
+                importlib.import_module(lib_name)
         except Exception:
             pass
 
@@ -64,41 +69,30 @@ def warm_up(splash=None):
         fig.add_subplot(111).set_axis_off()  # 초기 빈 상태 설정
         context["live_preview_fig"] = fig
 
-        # 백엔드 강제 초기화 및 캐시 생성
-        plt.figure(figsize=(1, 1)).clear()
-        plt.close("all")
+        # 2-2. 폰트 매니저 워밍업 (모음 분석 창 등에서 폰트 지연 방지)
+        _update_msg("Scanning System Fonts...")
+        fm.fontManager.get_default_weight()
 
-        _update_msg("Loading Font Manager...")
-        _ = fm.fontManager.ttflist
+        # 2-3. 기본 스타일 설정
+        plt.rcParams["font.family"] = "sans-serif"
+        plt.rcParams["axes.unicode_minus"] = False
 
-        _update_msg("Registering Assets Fonts...")
-        from engine.plot_engine import _register_assets_fonts
-        _register_assets_fonts()
+    except Exception as e:
+        print(f"Warning: Failed to warm up matplotlib: {e}")
 
-    except Exception:
-        pass
-
-    # 3. 데이터 프로세서 및 엔진 사전 로딩
-    _update_msg("Warming up Analysis Modules...")
+    # 3. 기타 핵심 모듈 사전 로드
+    _update_msg("Loading Core Engines...")
     try:
-        from model.data_processor import DataProcessor
+        # PlotEngine, PathPrefs 등
         from engine.plot_engine import PlotEngine
+        # PathPrefs는 컨트롤러에서 직접 로드하므로 여기서 제외하여 타입 에러 방지
 
-        context["data_processor"] = DataProcessor()
+        # 컨트롤러에서 재사용할 수 있게 context에 담기
         context["plot_engine"] = PlotEngine()
-    except Exception:
-        pass
+        # context["path_prefs"] 제거 (AttributeError 방지)
+    except Exception as e:
+        print(f"Warning: Failed to pre-load core modules: {e}")
 
-    # 4. 사용자 설정(Path Prefs) 선행 로드
-    _update_msg("Loading User Preferences...")
-    try:
-        from PyQt6.QtCore import QStandardPaths
-        from utils import path_prefs
-        _prefs_base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
-        if _prefs_base:
-            context["path_prefs"] = path_prefs.load_path_prefs(_prefs_base)
-    except Exception:
-        pass
-
-    _update_msg("Ready")
+    _update_msg("System Ready")
+    time.sleep(0.1)
     return context

@@ -9,11 +9,14 @@ from PyQt6.QtCore import Qt
 
 import config
 import app_logger
-from utils import icon_utils
+from utils import icon_utils, logger_setup
 from core import preloader
 from core.controller import MainController
 
 if __name__ == "__main__":
+    # 백그라운드 로깅 시스템 초기화
+    logger_setup.setup_logging()
+
     # Windows 작업표시줄 아이콘 버그 해결을 위한 AppUserModelID 설정
     if platform.system() == "Windows":
         import ctypes
@@ -90,11 +93,18 @@ if __name__ == "__main__":
         if splash:
             from PyQt6.QtCore import Qt
             from PyQt6.QtGui import QColor
-            splash.showMessage(msg, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, QColor("white"))
+
+            splash.showMessage(
+                msg,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                QColor("white"),
+            )
             app.processEvents()
 
     # 4. 메인 컨트롤러 생성 및 실행 (사전 초기화된 객체 및 콜백 전달)
-    controller = MainController(startup_context=startup_context, status_callback=status_callback)
+    controller = MainController(
+        startup_context=startup_context, status_callback=status_callback
+    )
 
     # 메인 윈도우가 준비되면 스플래시 종료
     if hasattr(controller, "ui") and controller.ui:

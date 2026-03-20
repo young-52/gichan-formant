@@ -275,6 +275,25 @@ class LayerDockWidget(QWidget):
         self.draw_item_state_changed.connect(self._on_draw_item_state_changed)
         self._setup_drop_indicators()
 
+    def _get_modifiers_from_arg(self, arg):
+        """이벤트 포워더(arg=KeyboardModifier) 또는 직접 클릭(arg=bool/None)에서 모디파이어를 추출합니다."""
+        if isinstance(arg, Qt.KeyboardModifier) or (isinstance(arg, int) and arg > 0):
+            return arg
+        return QApplication.keyboardModifiers()
+
+    def _create_column_frame(self, width, height=32, has_border=True):
+        """정해진 너비와 스타일을 가진 표 형식의 칸(Column) 프레임을 생성합니다."""
+        col = QFrame()
+        col.setFixedSize(width, height)
+        if has_border:
+            style = "background: transparent; border-right: 1px solid #E4E7ED; border-bottom: none; border-top: none; border-left: none;"
+        else:
+            style = "border: none; background: transparent;"
+        col.setStyleSheet(style)
+        layout = QVBoxLayout(col)
+        layout.setContentsMargins(0, 0, 0, 0)
+        return col, layout
+
     def _setup_drop_indicators(self):
         """드래그 앤 드롭 시 삽입 위치를 표시할 오버레이 위젯 초기화."""
         # 1. 라벨 탭용 인디케이터
@@ -888,7 +907,6 @@ class LayerDockWidget(QWidget):
             QFrame[drawRow="true"]:hover { background-color: #F5F7FA; }
             QFrame[drawRow="true"][selected="true"] {
                 background-color: #E6F0F9;
-                border-left: 3px solid #409EFF;
             }
         """)
         row_vbox = QVBoxLayout(row)
@@ -898,25 +916,15 @@ class LayerDockWidget(QWidget):
         main_h.setContentsMargins(0, 0, 0, 0)
         main_h.setSpacing(0)
 
-        col_eye = QFrame()
-        col_eye.setFixedSize(32, 32)
-        col_eye.setStyleSheet(
-            "background: transparent; border-right: 1px solid #E4E7ED; border-bottom: none; border-top: none; border-left: none;"
-        )
-        eye_layout = QVBoxLayout(col_eye)
-        eye_layout.setContentsMargins(0, 0, 0, 0)
+        # 1. 눈 (Eye) 열
+        col_eye, eye_layout = self._create_column_frame(32)
         eye_btn = LayerEyeButton()
         eye_btn.setChecked(getattr(obj, "visible", True))
         eye_layout.addWidget(eye_btn)
         main_h.addWidget(col_eye)
 
-        col_semi = QFrame()
-        col_semi.setFixedSize(54, 32)
-        col_semi.setStyleSheet(
-            "background: transparent; border-right: 1px solid #E4E7ED; border-bottom: none; border-top: none; border-left: none;"
-        )
-        semi_layout = QVBoxLayout(col_semi)
-        semi_layout.setContentsMargins(0, 0, 0, 0)
+        # 2. 반투명 (Semi) 열
+        col_semi, semi_layout = self._create_column_frame(54)
         semi_btn = QPushButton("반투명")
         semi_btn.setCheckable(True)
         semi_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -961,7 +969,7 @@ class LayerDockWidget(QWidget):
         name_btn.setStyleSheet(
             "QPushButton { border: none; background: transparent; text-align: left; color: #303133; }"
         )
-        name_btn.setCheckable(True)
+        name_btn.setCheckable(False)
         name_btn.setChecked(
             draw_index in getattr(self, "_selected_draw_indices", set())
         )
@@ -1034,8 +1042,8 @@ class LayerDockWidget(QWidget):
         def on_semi_toggled(checked):
             self.draw_item_state_changed.emit(idx, "semi", bool(checked))
 
-        def on_name_clicked():
-            self._last_modifier = QApplication.keyboardModifiers()
+        def on_name_clicked(arg=None):
+            self._last_modifier = self._get_modifiers_from_arg(arg)
             self._selected_vowels = set()
             for r in self._layer_rows.values():
                 r.setProperty("selected", False)
@@ -1498,25 +1506,12 @@ class LayerDockWidget(QWidget):
         main_h.setSpacing(0)
 
         # 1. 눈 (Eye) 열
-        col_eye = QFrame()
-        col_eye.setFixedSize(32, 32)
-        # 오른쪽 1px 세로선으로 칸을 구분 (배경은 투명으로 두어 행 hover/선택 색이 그대로 비치도록 함)
-        col_eye.setStyleSheet(
-            "background: transparent; border-right: 1px solid #E4E7ED; border-bottom: none; border-top: none; border-left: none;"
-        )
-        eye_layout = QVBoxLayout(col_eye)
-        eye_layout.setContentsMargins(0, 0, 0, 0)
+        col_eye, eye_layout = self._create_column_frame(32)
         eye_btn = LayerEyeButton()
         eye_layout.addWidget(eye_btn)
 
         # 2. 반투명 (Semi) 열
-        col_semi = QFrame()
-        col_semi.setFixedSize(54, 32)
-        col_semi.setStyleSheet(
-            "background: transparent; border-right: 1px solid #E4E7ED; border-bottom: none; border-top: none; border-left: none;"
-        )
-        semi_layout = QVBoxLayout(col_semi)
-        semi_layout.setContentsMargins(0, 0, 0, 0)
+        col_semi, semi_layout = self._create_column_frame(54)
         semi_btn = QPushButton("반투명")
         semi_btn.setCheckable(True)
         semi_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1570,13 +1565,7 @@ class LayerDockWidget(QWidget):
         name_layout.addWidget(expand_btn)
 
         # 4. 자물쇠(잠금) 열 — 잠금 시 레이어 설정 초기화에서 제외
-        col_lock = QFrame()
-        col_lock.setFixedSize(32, 32)
-        col_lock.setStyleSheet(
-            "background: transparent; border-right: 1px solid #E4E7ED; border-bottom: none; border-top: none; border-left: none;"
-        )
-        lock_layout = QVBoxLayout(col_lock)
-        lock_layout.setContentsMargins(0, 0, 0, 0)
+        col_lock, lock_layout = self._create_column_frame(32)
         lock_btn = LayerLockButton()
         lock_layout.addWidget(lock_btn)
 
@@ -1625,8 +1614,8 @@ class LayerDockWidget(QWidget):
                     vowel, toggle_item_visibility(True, checked)
                 )
 
-        def on_name_clicked():
-            self._last_modifier = QApplication.keyboardModifiers()
+        def on_name_clicked(arg=None):
+            self._last_modifier = self._get_modifiers_from_arg(arg)
             self._toggle_select_vowel(vowel, name_btn)
             self._sync_design_controls_to_selection()
 

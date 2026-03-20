@@ -74,7 +74,7 @@ class MainUI(QMainWindow):
     def __init__(self, controller, status_callback=None):
         super().__init__()
         self.controller = controller
-        
+
         def _report(msg):
             if status_callback:
                 status_callback(msg)
