@@ -83,10 +83,18 @@ if __name__ == "__main__":
     app_logger.set_min_level_from_env()
 
     # 3. 라이브러리 및 엔진 사전 로딩 (스플래시 업데이트 포함)
-    preloader.warm_up(splash)
+    startup_context = preloader.warm_up(splash)
 
-    # 4. 메인 컨트롤러 생성 및 실행
-    controller = MainController()
+    # UI 로딩 상태를 스플래시에 중계하기 위한 콜백 함수
+    def status_callback(msg):
+        if splash:
+            from PyQt6.QtCore import Qt
+            from PyQt6.QtGui import QColor
+            splash.showMessage(msg, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, QColor("white"))
+            app.processEvents()
+
+    # 4. 메인 컨트롤러 생성 및 실행 (사전 초기화된 객체 및 콜백 전달)
+    controller = MainController(startup_context=startup_context, status_callback=status_callback)
 
     # 메인 윈도우가 준비되면 스플래시 종료
     if hasattr(controller, "ui") and controller.ui:

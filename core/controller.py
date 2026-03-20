@@ -39,7 +39,7 @@ class MainController:
     파일 가이드 연동 및 데이터 기반 인터랙션 제어를 담당합니다.
     """
 
-    def __init__(self):
+    def __init__(self, startup_context=None, status_callback=None):
         self.filepaths = []
         self.plot_data_list = []
         self.current_idx = 0
@@ -50,18 +50,20 @@ class MainController:
         # 파일 열기 다이얼로그에서 사용할 마지막 선택 디렉터리 (없으면 Documents)
         self.last_open_dir = None
 
-        # JSON에서 최근 경로 로드 (폴더가 존재할 때만 반영)
-        _prefs_base = QStandardPaths.writableLocation(
-            QStandardPaths.StandardLocation.AppDataLocation
-        )
-        if _prefs_base:
-            _loaded = path_prefs.load_path_prefs(_prefs_base)
-            if _loaded.get("last_open_dir") and os.path.isdir(_loaded["last_open_dir"]):
-                self.last_open_dir = _loaded["last_open_dir"]
-            # [사용자 요청] 저장 경로는 앱 실행 시마다 '다운로드'로 리셋되도록 로드하지 않음.
-            # (last_save_dir는 None으로 유지되어 fallback인 Downloads가 작동함)
-            # if _loaded.get("last_save_dir") and os.path.isdir(_loaded["last_save_dir"]):
-            #     self.last_save_dir = _loaded["last_save_dir"]
+        # startup_context에서 사전 로드된 설정 반영
+        context = startup_context or {}
+        _loaded_prefs = context.get("path_prefs")
+
+        if _loaded_prefs:
+            if _loaded_prefs.get("last_open_dir") and os.path.isdir(_loaded_prefs["last_open_dir"]):
+                self.last_open_dir = _loaded_prefs["last_open_dir"]
+        else:
+            # context가 없거나 prefs가 없으면 직접 로딩 시도 (폴더가 존재할 때만 반영)
+            _prefs_base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+            if _prefs_base:
+                _loaded = path_prefs.load_path_prefs(_prefs_base)
+                if _loaded.get("last_open_dir") and os.path.isdir(_loaded["last_open_dir"]):
+                    self.last_open_dir = _loaded["last_open_dir"]
 
         # PyQt6에서는 팝업 창이 가비지 컬렉터(GC)에 의해 증발하는 것을
         # 막기 위해 리스트에 참조를 보관해야 합니다.
@@ -70,10 +72,11 @@ class MainController:
         self.ruler_tool = RulerTool()
         self.label_move_tool = None  # LabelMoveTool: 단일 플롯 팝업에서만 생성
         self.custom_label_offsets = {}  # (file_idx, plot_type) -> { vowel: (dx_data, dy_data) }
-        self.data_processor = DataProcessor()
-        self.plot_engine = PlotEngine()
 
-        self.live_preview_fig = Figure(figsize=(6.5, 6.5), dpi=150)
+        # 사전 초기화된 엔진 재사용
+        self.data_processor = context.get("data_processor") or DataProcessor()
+        self.plot_engine = context.get("plot_engine") or PlotEngine()
+        self.live_preview_fig = context.get("live_preview_fig") or Figure(figsize=(6.5, 6.5), dpi=150)
 
         # LIVE 미리보기 디바운스: 연속 호출 시 마지막 한 번만 렌더 (메인 스레드 블로킹 완화)
         self._live_preview_timer = QTimer()
@@ -81,7 +84,7 @@ class MainController:
         self._live_preview_timer.timeout.connect(self._render_live_preview)
 
         # UI 생성 및 컨트롤러 등록
-        self.ui = MainUI(self)
+        self.ui = MainUI(self, status_callback=status_callback)
         app_logger.set_ui(self.ui)
         # 작업표시줄 아이콘이 처음 실행 시 바로 뜨도록, 창 표시 전에 한 번 더 아이콘 적용
         try:
@@ -90,9 +93,14 @@ class MainController:
         except Exception as e:
             app_logger.debug(f"[_apply_pyqt6_icon] 초기 아이콘 적용 실패: {e}")
 
-        # 창을 먼저 표시한 뒤, UI 렌더링 완료 후 라이브 미리보기 지연 실행 (초기 렉 완화)
+        # 창 표시
         self.ui.show()
-        QTimer.singleShot(50, self._deferred_init_after_show)
+
+        # 사전 초기화된 Fig가 있다면 첫 렌더링을 매우 빠르게 수행 (50ms 지연 불필요)
+        if context.get("live_preview_fig"):
+            QTimer.singleShot(0, self._deferred_init_after_show)
+        else:
+            QTimer.singleShot(50, self._deferred_init_after_show)
 
     def _deferred_init_after_show(self):
         """창 표시 후 첫 이벤트 루프에서 실행: LIVE 미리보기 렌더링 및 시작 로그"""

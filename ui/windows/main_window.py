@@ -71,12 +71,19 @@ class DropLabel(QLabel):
 
 
 class MainUI(QMainWindow):
-    def __init__(self, controller):
+    def __init__(self, controller, status_callback=None):
         super().__init__()
         self.controller = controller
+        
+        def _report(msg):
+            if status_callback:
+                status_callback(msg)
+
+        _report("Initializing Main Interface...")
         self.setWindowTitle(config.APP_TITLE)
 
         # 아이콘 로드 및 적용
+        _report("Loading UI Resources...")
         self._apply_pyqt6_icon()
 
         # 창 크기 고정
@@ -90,11 +97,13 @@ class MainUI(QMainWindow):
             | Qt.WindowType.WindowSystemMenuHint
         )
 
+        _report("Setting up Typography...")
         self.ui_font_name = (
             "Malgun Gothic" if platform.system() == "Windows" else "AppleGothic"
         )
         self._setup_fonts()
 
+        _report("Applying Design System...")
         # [핵심] UI 전반의 둥근 모서리 곡률 통일 (border-radius)
         self.setStyleSheet("""
             QMainWindow { background-color: #f5f7fa; }
@@ -165,7 +174,9 @@ class MainUI(QMainWindow):
         self.main_v_layout.setContentsMargins(15, 20, 15, 5)
         self.main_v_layout.setSpacing(8)
 
+        _report("Building Workspace...")
         self._build_top_workspace()
+        _report("Readying System Logs...")
         self._build_bottom_log()
 
         # [로직 시그널 연결]
