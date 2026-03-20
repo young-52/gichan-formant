@@ -35,7 +35,23 @@ if __name__ == "__main__":
 
     # 1. 스플래시 스크린 설정 (크기 조절 가능하도록 변수화)
     SPLASH_WIDTH = 450
-    splash_pix = QPixmap(os.path.join("assets", "GichanFormant_SplashScreen.jpg"))
+    splash_path = os.path.join(config.ASSETS_DIR, "GichanFormant_SplashScreen.jpg")
+    splash_pix = QPixmap(splash_path)
+
+    # 스플래시 이미지 로드 실패 시 폴백 처리 (안정성 강화)
+    if splash_pix.isNull():
+        splash_pix = QPixmap(SPLASH_WIDTH, int(SPLASH_WIDTH * 0.6))
+        splash_pix.fill(QColor("#1976D2"))  # 브랜드 컬러 계열
+        from PyQt6.QtGui import QPainter
+
+        painter = QPainter(splash_pix)
+        painter.setPen(QColor("white"))
+        font = QFont("Malgun Gothic", 16, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(
+            splash_pix.rect(), Qt.AlignmentFlag.AlignCenter, "GichanFormant\nLoading..."
+        )
+        painter.end()
 
     # DPI 대응 리사이징
     dpr = app.primaryScreen().devicePixelRatio()

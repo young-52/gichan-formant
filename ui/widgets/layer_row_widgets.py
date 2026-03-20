@@ -78,12 +78,15 @@ class _LayerRowFrame(QFrame):
 
             # 스택용 Pixmap 크기 계산 (개당 6px씩 어긋남)
             base_pix = self.grab()
+            dpr = self.devicePixelRatio()
             offset = 6
-            stack_w = base_pix.width() + (len(show_items) - 1) * offset
-            stack_h = base_pix.height() + (len(show_items) - 1) * offset
+            stack_w = base_pix.width() / dpr + (len(show_items) - 1) * offset
+            stack_h = base_pix.height() / dpr + (len(show_items) - 1) * offset
             from PyQt6.QtGui import QPixmap
 
-            out_pix = QPixmap(stack_w, stack_h)
+            # 장치 픽셀 비유(DPR) 반영하여 물리 픽셀 크기로 생성
+            out_pix = QPixmap(int(stack_w * dpr), int(stack_h * dpr))
+            out_pix.setDevicePixelRatio(dpr)
             out_pix.fill(Qt.GlobalColor.transparent)
             painter = QPainter(out_pix)
 
@@ -93,17 +96,22 @@ class _LayerRowFrame(QFrame):
                 row_frame = dock._layer_rows.get(v)
                 if row_frame:
                     p = row_frame.grab()
+                    # 논리적 좌표로 그리기 (Painter가 DPR을 인식함)
                     painter.drawPixmap(idx * offset, idx * offset, p)
-                    # 구분을 위한 얇은 테두리 추가
+                    # 구분을 위한 얇은 테두리 추가 (논리적 크기 기준)
                     painter.setPen(QPen(QColor("#DCDFE6"), 1))
                     painter.drawRect(
-                        idx * offset, idx * offset, p.width() - 1, p.height() - 1
+                        idx * offset,
+                        idx * offset,
+                        int(p.width() / dpr) - 1,
+                        int(p.height() / dpr) - 1,
                     )
 
             # 전체 반투명 처리
             painter.setCompositionMode(
                 QPainter.CompositionMode.CompositionMode_DestinationIn
             )
+            # rect()는 논리적 크기를 반환함
             painter.fillRect(out_pix.rect(), QColor(0, 0, 0, 180))
             painter.end()
         else:
@@ -265,12 +273,14 @@ class _DrawLayerRowFrame(QFrame):
             rows = getattr(dock, "_draw_layer_rows", [])
 
             base_pix = self.grab()
+            dpr = self.devicePixelRatio()
             offset = 6
-            stack_w = base_pix.width() + (len(show_items) - 1) * offset
-            stack_h = base_pix.height() + (len(show_items) - 1) * offset
+            stack_w = base_pix.width() / dpr + (len(show_items) - 1) * offset
+            stack_h = base_pix.height() / dpr + (len(show_items) - 1) * offset
             from PyQt6.QtGui import QPixmap
 
-            out_pix = QPixmap(stack_w, stack_h)
+            out_pix = QPixmap(int(stack_w * dpr), int(stack_h * dpr))
+            out_pix.setDevicePixelRatio(dpr)
             out_pix.fill(Qt.GlobalColor.transparent)
             painter = QPainter(out_pix)
 
@@ -287,13 +297,13 @@ class _DrawLayerRowFrame(QFrame):
                     p = row_frame.grab()
                     offset_idx = len(show_items) - 1 - i
                     painter.drawPixmap(offset_idx * offset, offset_idx * offset, p)
-                    # 구분을 위한 얇은 테두리 추가
+                    # 구분을 위한 얇은 테두리 추가 (논리적 크기 기준)
                     painter.setPen(QPen(QColor("#DCDFE6"), 1))
                     painter.drawRect(
                         offset_idx * offset,
                         offset_idx * offset,
-                        p.width() - 1,
-                        p.height() - 1,
+                        int(p.width() / dpr) - 1,
+                        int(p.height() / dpr) - 1,
                     )
 
             painter.setCompositionMode(

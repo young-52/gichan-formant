@@ -16,6 +16,13 @@ APP_TITLE = f"GichanFormant v{APP_VERSION}"
 AUTHOR = "Bae Gichan"
 COPYRIGHT_TEXT = f"Copyright © 2026 {AUTHOR}. All rights reserved."
 
+# 경로 설정 (Path Config)
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+
 
 # =============================================================================
 # 2. UI 공통 (창 크기, 폰트, 미리보기 캔버스)

@@ -14,10 +14,7 @@ from utils.math_utils import hz_to_bark, hz_to_log, calc_f2_prime
 
 # assets/fonts에 있는 폰트 등록 (Noto Serif KR Medium 등)
 def _register_assets_fonts():
-    _base = getattr(config, "BASE_DIR", None) or os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__))
-    )
-    fonts_dir = os.path.join(_base, "assets", "fonts")
+    fonts_dir = os.path.join(config.ASSETS_DIR, "fonts")
     if not os.path.isdir(fonts_dir):
         return
     for name in os.listdir(fonts_dir):
