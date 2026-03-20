@@ -236,6 +236,7 @@ $RECYCLE.BIN/
 *.lnk
 
 .idea/
+.vscode/
 
 # GichanFormant specific
 logs/
