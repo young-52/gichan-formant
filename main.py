@@ -7,12 +7,13 @@ from PyQt6.QtWidgets import QApplication, QSplashScreen
 from PyQt6.QtGui import QPixmap, QFont, QColor
 from PyQt6.QtCore import Qt
 
-import config
-import app_logger
-from utils import icon_utils, logger_setup
-from core import preloader
+
 
 if __name__ == "__main__":
+    from utils import logger_setup
+    import config
+    import app_logger
+
     # 백그라운드 로깅 시스템 초기화
     logger_setup.setup_logging()
 
@@ -88,9 +89,13 @@ if __name__ == "__main__":
 
     splash = VersionSplashScreen(scaled_pix, f"Version {config.APP_VERSION}")
 
-    # 2. 스플래시 표시
+    # 2. 스플래시 표시 (즉각적인 피드백을 위해 라이브러리 로드 전 실행)
     splash.show()
     app.processEvents()
+
+    # 스플래시가 뜬 직후 무거운 유틸리티 및 프리로더 로드
+    from utils import icon_utils
+    from core import preloader
 
     # 전역 앱 레벨에서 아이콘 적용
     try:
@@ -123,8 +128,9 @@ if __name__ == "__main__":
         startup_context=startup_context, status_callback=status_callback
     )
 
-    # 메인 윈도우가 준비되면 스플래시 종료
+    # 메인 윈도우가 준비되면 창을 띄우고 스플래시 종료
     if hasattr(controller, "ui") and controller.ui:
+        controller.ui.show()
         splash.finish(controller.ui)
     else:
         splash.close()

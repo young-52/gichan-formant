@@ -5,6 +5,7 @@ import io
 import inspect
 import traceback
 import copy
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QTimer, QStandardPaths
 from PyQt6.QtGui import QPixmap
 from matplotlib.figure import Figure
@@ -101,19 +102,14 @@ class MainController:
         except Exception as e:
             app_logger.debug(f"[_apply_pyqt6_icon] 초기 아이콘 적용 실패: {e}")
 
-        # 창 표시
-        self.ui.show()
-
-        # 사전 초기화된 Fig가 있다면 첫 렌더링을 매우 빠르게 수행 (50ms 지연 불필요)
-        if context.get("live_preview_fig"):
-            QTimer.singleShot(0, self._deferred_init_after_show)
-        else:
-            QTimer.singleShot(50, self._deferred_init_after_show)
+        # 사전 초기화된 Fig가 있다면 첫 렌더링을 즉시 동기적으로 수행하여 스플래시 종료 전 화면을 채웁니다.
+        # (실제 창 표시는 main.py에서 splash.finish()와 함께 수행하여 겹침 현상을 방지합니다)
+        self._render_live_preview()
+        app_logger.info(config.LOG_MSG["APP_START"].format(app_title=config.APP_TITLE))
 
     def _deferred_init_after_show(self):
-        """창 표시 후 첫 이벤트 루프에서 실행: LIVE 미리보기 렌더링 및 시작 로그"""
-        self.update_live_preview()
-        app_logger.info(config.LOG_MSG["APP_START"].format(app_title=config.APP_TITLE))
+        """(현재는 __init__에서 동기화 처리하므로 필요 시 다른 지연 작업용으로 남겨둠)"""
+        pass
 
     def _build_outlier_log_message(
         self, total_removed, file_removed, files_with_small_labels, any_label_tested
