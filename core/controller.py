@@ -5,7 +5,6 @@ import io
 import inspect
 import traceback
 import copy
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer, QStandardPaths
 from PySide6.QtGui import QPixmap
 from matplotlib.figure import Figure

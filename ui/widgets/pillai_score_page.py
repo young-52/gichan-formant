@@ -379,7 +379,7 @@ class PillaiScorePage(QWidget):
         selected_items = self.vowel_table.selectedItems()
         selected_vowels = sorted(
             list(set(it.data(Qt.ItemDataRole.UserRole) for it in selected_items)),
-            key=get_vowel_sort_key
+            key=get_vowel_sort_key,
         )
         self.selection_count = len(selected_vowels)
         self.selectionStateChanged.emit()

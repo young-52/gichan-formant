@@ -230,12 +230,8 @@ class LayerDockWidget(QWidget):
     overrides_changed = Signal(dict)
     label_filter_item_changed = Signal(str, str)
     draw_item_state_changed = Signal(int, str, object)
-    compare_switch_requested = Signal(
-        int
-    )  # compare 모드에서 파일 A(0)/B(1) 전환 요청
-    splitter_sizes_changed = Signal(
-        list
-    )  # 다중플롯에서 두 도크 스플리터 비율 공유용
+    compare_switch_requested = Signal(int)  # compare 모드에서 파일 A(0)/B(1) 전환 요청
+    splitter_sizes_changed = Signal(list)  # 다중플롯에서 두 도크 스플리터 비율 공유용
     order_changed = Signal(list)
 
     def __init__(

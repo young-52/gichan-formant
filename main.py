@@ -8,7 +8,6 @@ from PySide6.QtGui import QPixmap, QFont, QColor
 from PySide6.QtCore import Qt
 
 
-
 if __name__ == "__main__":
     from utils import logger_setup
     import config

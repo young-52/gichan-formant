@@ -801,13 +801,13 @@ class ComparePlotPopup(BasePlotWindow):
             if d_blue is not None and lbl_col_blue:
                 vowels_blue = sorted(
                     d_blue[lbl_col_blue].dropna().astype(str).unique().tolist(),
-                    key=get_vowel_sort_key
+                    key=get_vowel_sort_key,
                 )
                 self._layer_dock_blue.set_vowels(vowels_blue)
             if d_red is not None and lbl_col_red:
                 vowels_red = sorted(
                     d_red[lbl_col_red].dropna().astype(str).unique().tolist(),
-                    key=get_vowel_sort_key
+                    key=get_vowel_sort_key,
                 )
                 self._layer_dock_red.set_vowels(vowels_red)
 
