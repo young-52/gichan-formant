@@ -1,7 +1,7 @@
 # ui/icon_widgets.py — QPainter로 그리는 아이콘·버튼·인디케이터 모음
 # design_panel, layer_dock, compare_plot, tool_indicator에서 import하여 사용.
 
-from PyQt6.QtWidgets import QPushButton, QFrame
+from PyQt6.QtWidgets import QPushButton, QFrame, QApplication
 from PyQt6.QtCore import Qt, QSize, QRectF, QPointF, QVariantAnimation
 from PyQt6.QtGui import (
     QPainter,
@@ -20,7 +20,11 @@ from PyQt6.QtGui import (
 def create_font_style_icon(is_serif=False):
     """폰트 스타일 선택 버튼용 아이콘: 투명 배경 QPixmap 중앙에 'A'를 Sans-serif/Serif로 그려 QIcon 반환."""
     w, h = 40, 26
-    pixmap = QPixmap(w, h)
+    app = QApplication.instance()
+    dpr = app.primaryScreen().devicePixelRatio() if app else 1.0
+    
+    pixmap = QPixmap(int(w * dpr), int(h * dpr))
+    pixmap.setDevicePixelRatio(dpr)
     pixmap.fill(Qt.GlobalColor.transparent)
     try:
         painter = QPainter(pixmap)
@@ -41,7 +45,11 @@ def create_font_style_icon(is_serif=False):
 def create_raw_marker_icon(marker_kind):
     """데이터 포인트 선택용 아이콘: 'o'(빈 원), 'x', 'a'(라벨 문자). QIcon 반환."""
     w, h = 24, 24
-    pixmap = QPixmap(w, h)
+    app = QApplication.instance()
+    dpr = app.primaryScreen().devicePixelRatio() if app else 1.0
+
+    pixmap = QPixmap(int(w * dpr), int(h * dpr))
+    pixmap.setDevicePixelRatio(dpr)
     pixmap.fill(Qt.GlobalColor.transparent)
     try:
         painter = QPainter(pixmap)
@@ -91,7 +99,11 @@ def create_legend_icon_design(color_hex, line_style_str, marker_char="o"):
         # 1.5=3px 선, 1.0=2px 공백 -> 약 3~4개 패턴
         dash_pattern = [1.5, 1.0]
         cap_style = Qt.PenCapStyle.FlatCap
-    pixmap = QPixmap(50, 16)
+    app = QApplication.instance()
+    dpr = app.primaryScreen().devicePixelRatio() if app else 1.0
+
+    pixmap = QPixmap(int(50 * dpr), int(16 * dpr))
+    pixmap.setDevicePixelRatio(dpr)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -164,7 +176,11 @@ class LinePreviewButton(QPushButton):
             QPushButton:checked {{ background-color: #E4E7ED; }}
             QPushButton:hover:!checked {{ background-color: #F5F7FA; }}
         """)
-        pixmap = QPixmap(50, 14)
+        app = QApplication.instance()
+        dpr = app.primaryScreen().devicePixelRatio() if app else 1.0
+        
+        pixmap = QPixmap(int(50 * dpr), int(14 * dpr))
+        pixmap.setDevicePixelRatio(dpr)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -205,7 +221,10 @@ class MarkerShapeButton(QPushButton):
         self.setIconSize(QPixmap(24, 24).size())
 
     def _draw_icon(self, marker):
-        pixmap = QPixmap(24, 24)
+        dpr = self.devicePixelRatio()
+        w_px, h_px = int(24 * dpr), int(24 * dpr)
+        pixmap = QPixmap(w_px, h_px)
+        pixmap.setDevicePixelRatio(dpr)
         pixmap.fill(Qt.GlobalColor.transparent)
         try:
             painter = QPainter(pixmap)

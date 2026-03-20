@@ -553,18 +553,25 @@ class MainController:
         )
 
         buf = io.BytesIO()
+        buf = io.BytesIO()
         self.live_preview_fig.savefig(buf, format="png", facecolor="white")
         buf.seek(0)
 
         pixmap = QPixmap()
         pixmap.loadFromData(buf.getvalue())
 
+        # High-DPI 대응: label의 논리 좌표와 실제 픽셀 해상도를 맞춤
+        dpr = self.ui.preview_label.devicePixelRatio()
+        w = int(self.ui.preview_label.width() * dpr)
+        h = int(self.ui.preview_label.height() * dpr)
+
         scaled_pixmap = pixmap.scaled(
-            self.ui.preview_label.width(),
-            self.ui.preview_label.height(),
+            w,
+            h,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        scaled_pixmap.setDevicePixelRatio(dpr)
 
         self.ui.preview_label.setPixmap(scaled_pixmap)
         buf.close()
