@@ -615,27 +615,4 @@ class DrawDesignPanel(QWidget):
         if self._current_layer_type is None or not self._current_layer_id:
             return
         settings = self.get_current_settings()
-        # #region agent log
-        try:
-            import json
-
-            with open("debug-61ea09.log", "a", encoding="utf-8") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "61ea09",
-                            "message": "emit_settings",
-                            "data": {
-                                "layer_id": self._current_layer_id,
-                                "layer_type": str(self._current_layer_type),
-                            },
-                            "hypothesisId": "H1",
-                            "timestamp": __import__("time").time() * 1000,
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
         self.settings_changed.emit(self._current_layer_id, settings)
