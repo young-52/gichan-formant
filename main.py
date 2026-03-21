@@ -9,38 +9,22 @@ from PySide6.QtCore import Qt
 
 
 if __name__ == "__main__":
-    from utils import logger_setup
-    import config
-    import app_logger
-
-    # 백그라운드 로깅 시스템 초기화
-    logger_setup.setup_logging()
-
-    # Windows 작업표시줄 아이콘 버그 해결을 위한 AppUserModelID 설정
-    if platform.system() == "Windows":
-        import ctypes
-
-        try:
-            myappid = "gichan.formant.app"
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception:
-            pass
-
     app = QApplication(sys.argv)
-    app.setApplicationName("GichanFormant")
-    app.setApplicationVersion(config.APP_VERSION)
-    app.setOrganizationName(config.AUTHOR)
-    app.setOrganizationDomain("com.gichan.formant")
 
-    # 1. 스플래시 스크린 설정 (크기 조절 가능하도록 변수화)
+    # 1. 스플래시 스크린 즉시 설정 (가장 최우선 순위로 실행하여 시각적 반응성 극대화)
+    import config
+    import os
+    from PySide6.QtGui import QPixmap, QFont, QColor
+    from PySide6.QtCore import Qt
+
     SPLASH_WIDTH = 450
     splash_path = os.path.join(config.ASSETS_DIR, "GichanFormant_SplashScreen.jpg")
     splash_pix = QPixmap(splash_path)
 
-    # 스플래시 이미지 로드 실패 시 폴백 처리 (안정성 강화)
+    # 스플래시 이미지 로드 실패 시 폴백 처리
     if splash_pix.isNull():
         splash_pix = QPixmap(SPLASH_WIDTH, int(SPLASH_WIDTH * 0.6))
-        splash_pix.fill(QColor("#1976D2"))  # 브랜드 컬러 계열
+        splash_pix.fill(QColor("#1976D2"))
         from PySide6.QtGui import QPainter
 
         painter = QPainter(splash_pix)
@@ -52,17 +36,15 @@ if __name__ == "__main__":
         )
         painter.end()
 
-    # DPI 대응 리사이징
+    # DPI 대응 리사이징 (한 번만 수행)
     dpr = app.primaryScreen().devicePixelRatio()
     scaled_pix = splash_pix.scaledToWidth(
         int(SPLASH_WIDTH * dpr), Qt.TransformationMode.SmoothTransformation
     )
     scaled_pix.setDevicePixelRatio(dpr)
 
-    # 커스텀 클래스로 버전 정보 상시 표시 및 테두리 제거 해결
     class VersionSplashScreen(QSplashScreen):
         def __init__(self, pixmap, version):
-            # FramelessWindowHint와 함께 배경 투명화 속성을 부여하여 테두리/배경색 문제를 원천 봉쇄합니다.
             super().__init__(
                 pixmap,
                 Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint,
@@ -73,13 +55,10 @@ if __name__ == "__main__":
             self.version_font = QFont("Malgun Gothic", 9)
 
         def drawContents(self, painter):
-            # 1. 기본 메시지(Ready... 등) 그리기
             super().drawContents(painter)
-            # 2. 우측 상단에 버전 정보 겹쳐서 그리기 (강제로 흰색 펜 설정)
             painter.setRenderHint(painter.RenderHint.Antialiasing)
             painter.setPen(QColor("white"))
             painter.setFont(self.version_font)
-            # 여백을 주어 우측 상단에 배치
             painter.drawText(
                 self.rect().adjusted(0, 10, -15, 0),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
@@ -87,10 +66,28 @@ if __name__ == "__main__":
             )
 
     splash = VersionSplashScreen(scaled_pix, f"Version {config.APP_VERSION}")
-
-    # 2. 스플래시 표시 (즉각적인 피드백을 위해 라이브러리 로드 전 실행)
     splash.show()
     app.processEvents()
+
+    # 2. 스플래시가 뜬 '이후' 로깅 및 기타 설정 초기화
+    from utils import logger_setup
+    import app_logger
+
+    logger_setup.setup_logging()
+
+    if platform.system() == "Windows":
+        import ctypes
+
+        try:
+            myappid = "gichan.formant.app"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
+    app.setApplicationName("GichanFormant")
+    app.setApplicationVersion(config.APP_VERSION)
+    app.setOrganizationName(config.AUTHOR)
+    app.setOrganizationDomain("com.gichan.formant")
 
     # 스플래시가 뜬 직후 무거운 유틸리티 및 프리로더 로드
     from utils import icon_utils

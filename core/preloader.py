@@ -52,6 +52,9 @@ def warm_up(splash=None):
             time.sleep(0.01)  # UX 가독성을 위한 최소한의 지연
 
     # 1. 시스템 정보 기록 및 리소스 체크
+    _update_msg("Taking a holiday before starting...")
+    time.sleep(0.6)  # 이스터에그를 읽을 수 있도록 살짝 지연
+
     _update_msg("Checking System Environment...")
     try:
         # 시스템 정보 수집 (디버깅 지원)
