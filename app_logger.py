@@ -18,8 +18,8 @@ ERROR = 3
 _ui = None
 _log_file_path = None
 _console = False
-# 콘솔/파일에 기록할 최소 레벨 (이 레벨 이상만 기록). 기본 INFO
-_min_level = INFO
+# 콘솔/파일에 기록할 최소 레벨 (이 레벨 이상만 기록). 기본 DEBUG (터미널용)
+_min_level = DEBUG
 # GUI에 기록할 최소 레벨. DEBUG는 GUI에 안 넣음
 _gui_min_level = INFO
 

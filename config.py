@@ -315,5 +315,17 @@ OUTLIER_SIGMA_OPTIONS = [
 # 10. Sentry 설정 (Error Tracking)
 # =============================================================================
 SENTRY_DSN = "https://a2dd8b24066388a79cdfad4db2bf76f0@o4511081333915648.ingest.us.sentry.io/4511081343221760"
+# 배포 환경 설정 (production / development)
+SENTRY_ENV = "production"
 # IP 주소 등 개인 식별 정보 수집 여부 (보안을 위해 False 권장)
 SENTRY_SEND_PII = False
+
+# =============================================================================
+# 11. 업데이트 및 외부 프로젝트 정보 (Update Config)
+# =============================================================================
+GITHUB_OWNER = "baggychani"
+GITHUB_REPO = "GichanFormant"
+GITHUB_RELEASE_URL = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases"
+GITHUB_API_LATEST_RELEASE = (
+    f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+)

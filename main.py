@@ -14,6 +14,8 @@ import config
 sentry_sdk.init(
     dsn=config.SENTRY_DSN,
     send_default_pii=config.SENTRY_SEND_PII,
+    environment=getattr(config, "SENTRY_ENV", "production"),
+    release=config.APP_VERSION,
 )
 
 
@@ -98,8 +100,28 @@ if __name__ == "__main__":
     app.setOrganizationDomain("com.gichan.formant")
 
     # 스플래시가 뜬 직후 무거운 유틸리티 및 프리로더 로드
-    from utils import icon_utils
+    from utils import icon_utils, path_prefs
+    from utils.update_manager import UpdateManager
     from core import preloader
+    from PySide6.QtCore import QStandardPaths
+
+    # 앱 데이터 경로 및 업데이트 매니저 초기화
+    app_data_dir = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppDataLocation
+    )
+    update_manager = UpdateManager()
+
+    # 업데이트 확인 성공 시 마지막 확인 시각 저장 콜백 설정
+    def on_update_success(check_time_iso):
+        try:
+            prefs = path_prefs.load_path_prefs(app_data_dir)
+            prefs["last_update_check"] = check_time_iso
+            path_prefs.save_path_prefs(app_data_dir, prefs)
+            app_logger.debug(f"[Startup] Update check time saved: {check_time_iso}")
+        except Exception as e:
+            app_logger.debug(f"[Startup] Failed to save update check time: {e}")
+
+    update_manager.on_success_callback = on_update_success
 
     # 전역 앱 레벨에서 아이콘 적용
     try:
@@ -109,8 +131,136 @@ if __name__ == "__main__":
 
     app_logger.set_min_level_from_env()
 
+    # 업데이트 정보를 담을 임시 저장소 (스코프 문제 방지를 위해 리스트 사용)
+    pending_update_holder = []
+
+    # 업데이트 발견 시 정보를 저장만 해두고 나중에 띄움
+    def handle_update_signal(version, url, notes):
+        pending_update_holder.clear()
+        pending_update_holder.append((version, url, notes))
+        app_logger.debug(f"[Update] New version {version} detected and queued.")
+
+    def show_update_dialog_if_pending():
+        if not pending_update_holder:
+            return
+
+        try:
+            version, url, notes = pending_update_holder[0]
+            from PySide6.QtWidgets import (
+                QDialog,
+                QVBoxLayout,
+                QHBoxLayout,
+                QLabel,
+                QPushButton,
+            )
+            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QUrl, Qt
+
+            # 커스텀 다이얼로그 클래스 (UI 정렬 및 여백 요구사항 반영)
+            class CustomUpdateDialog(QDialog):
+                def __init__(self, parent, version, url, notes):
+                    super().__init__(parent)
+                    self.setWindowTitle("업데이트 알림")
+                    self.setMinimumWidth(420)
+
+                    layout = QVBoxLayout(self)
+                    # 여백을 약간 줄여서 너무 벙벙하지 않게 조정 (사용자 피드백 반영)
+                    layout.setContentsMargins(25, 20, 25, 20)
+                    layout.setSpacing(12)
+
+                    # 제목 (기본 좌측 정렬 유지)
+                    title_label = QLabel(
+                        f"<span style='font-size: 11pt;'><b>새로운 버전({version})이 준비되었습니다!</b></span>"
+                    )
+                    layout.addWidget(title_label)
+
+                    # 버전 정보 (좌측 정렬, 최신 버전 볼드)
+                    info_text = (
+                        f"현재 버전: {config.APP_VERSION}<br>"
+                        f"최신 버전: <b>{version}</b>"
+                    )
+                    info_label = QLabel(info_text)
+                    layout.addWidget(info_label)
+
+                    # 릴리스 노트 (내용이 있을 경우만)
+                    if notes:
+                        notes_title = QLabel("<b>[릴리스 노트]</b>")
+                        notes_title.setStyleSheet("color: #555;")
+                        layout.addWidget(notes_title)
+
+                        notes_area = QLabel(notes.strip())
+                        notes_area.setWordWrap(True)
+                        notes_area.setStyleSheet("""
+                            background-color: #f5f7fa; 
+                            padding: 12px; 
+                            border: 1px solid #e4e7ed;
+                            border-radius: 4px;
+                            color: #606266;
+                        """)
+                        layout.addWidget(notes_area)
+
+                    # 버튼 레이아웃 (중앙 정렬)
+                    btn_layout = QHBoxLayout()
+                    btn_layout.addStretch(1)  # 왼쪽 여백
+
+                    btn_update = QPushButton("지금 업데이트")
+                    btn_update.setMinimumSize(120, 36)
+                    btn_update.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn_update.setDefault(True)
+                    btn_update.clicked.connect(self.accept)
+
+                    btn_later = QPushButton("나중에")
+                    btn_later.setMinimumSize(100, 36)
+                    btn_later.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn_later.clicked.connect(self.reject)
+
+                    btn_layout.addWidget(btn_update)
+                    btn_layout.addWidget(btn_later)
+                    btn_layout.addStretch(1)  # 오른쪽 여백
+
+                    layout.addLayout(btn_layout)
+
+                    # 스타일시트 적용
+                    self.setStyleSheet("""
+                        QDialog { background-color: #ffffff; }
+                        QLabel { color: #303133; }
+                        QPushButton { 
+                            border: 1px solid #dcdfe6; 
+                            border-radius: 4px; 
+                            background-color: #ffffff;
+                            font-weight: 500;
+                        }
+                        QPushButton:hover { 
+                            background-color: #f5f7fa; 
+                            border-color: #c0c4cc; 
+                        }
+                        QPushButton:default {
+                            background-color: #409eff;
+                            color: white;
+                            border-color: #409eff;
+                        }
+                        QPushButton:default:hover {
+                            background-color: #66b1ff;
+                        }
+                    """)
+
+            parent = controller.ui if hasattr(controller, "ui") else None
+            dlg = CustomUpdateDialog(parent, version, url, notes)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                QDesktopServices.openUrl(QUrl(url))
+
+        except Exception as e:
+            app_logger.debug(f"[UpdateUI] Failed to show custom dialog: {e}")
+
+    # 시그널 연결
+    update_manager.update_available.connect(handle_update_signal)
+
     # 3. 라이브러리 및 엔진 사전 로딩 (스플래시 업데이트 포함)
-    startup_context = preloader.warm_up(splash)
+    # 업데이트 확인 객체를 context에 담아 전달
+    startup_context = preloader.warm_up(
+        splash, context={"update_manager": update_manager}
+    )
+    startup_context["update_manager"] = update_manager
 
     # UI 로딩 상태를 스플래시에 중계하기 위한 콜백 함수
     def status_callback(msg):
@@ -136,7 +286,10 @@ if __name__ == "__main__":
     if hasattr(controller, "ui") and controller.ui:
         controller.ui.show()
         splash.finish(controller.ui)
+        # 스플래시가 끝난 직후 (메인 창이 활성화된 상태) 알림창 띄움
+        show_update_dialog_if_pending()
     else:
         splash.close()
+        show_update_dialog_if_pending()
 
     sys.exit(app.exec())

@@ -40,10 +40,10 @@ def setup_logging(log_dir="logs"):
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
 
-    # 2. 콘솔 핸들러 (터미널 출력용)
+    # 2. 콘솔 핸들러 (터미널 출력용 - 개발 및 디버그 기록 포함)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
 
     return logger

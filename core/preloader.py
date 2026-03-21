@@ -18,7 +18,7 @@ HEAVY_LIBS = [
 ]
 
 
-def warm_up(splash=None):
+def warm_up(splash=None, context=None):
     """
     무거운 라이브러리를 미리 임포트하고 Matplotlib 등의 설정을 초기화합니다.
     리소스 체크, 시스템 정보 로깅, 로그 정리 등의 시작 작업을 병행합니다.
@@ -31,12 +31,19 @@ def warm_up(splash=None):
     import app_logger
     from PySide6.QtWidgets import QApplication
 
-    context = {
+    if context is None:
+        context = {}
+
+    # 기본 컨텍스트 필드 보충 (기존 값 유지)
+    defaults = {
         "data_processor": None,
         "plot_engine": None,
         "live_preview_fig": None,
         "path_prefs": None,
     }
+    for k, v in defaults.items():
+        if k not in context:
+            context[k] = v
 
     def _update_msg(msg):
         if splash:
@@ -83,6 +90,26 @@ def warm_up(splash=None):
     for f in important_files:
         if not os.path.exists(f):
             app_logger.warning(f"[Startup] Missing resource: {f}")
+
+    # 2.5 업데이트 확인 (영어로 메시지 표시, 비동기 호출)
+    if context and "update_manager" in context and context["update_manager"]:
+        _update_msg("Checking for updates...")
+        try:
+            from PySide6.QtCore import QStandardPaths
+
+            app_data_dir = QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.AppDataLocation
+            )
+            from utils import path_prefs
+
+            prefs = path_prefs.load_path_prefs(app_data_dir)
+            context["path_prefs"] = prefs
+
+            context["update_manager"].check_for_updates(
+                config.APP_VERSION, prefs.get("last_update_check")
+            )
+        except Exception as e:
+            app_logger.debug(f"[Startup] Update check trigger failed: {e}")
 
     # 3. 오래된 로그 정리 (7일 이상 경과)
     _update_msg("Cleaning Up Old Logs...")
