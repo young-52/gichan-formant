@@ -3,16 +3,24 @@
 import sys
 import platform
 import os
+import sentry_sdk
 from PySide6.QtWidgets import QApplication, QSplashScreen
 from PySide6.QtGui import QPixmap, QFont, QColor
 from PySide6.QtCore import Qt
+
+import config
+
+# Sentry 초기화 (가장 먼저 실행하여 모든 오류를 포착)
+sentry_sdk.init(
+    dsn=config.SENTRY_DSN,
+    send_default_pii=config.SENTRY_SEND_PII,
+)
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     # 1. 스플래시 스크린 즉시 설정 (가장 최우선 순위로 실행하여 시각적 반응성 극대화)
-    import config
     import os
     from PySide6.QtGui import QPixmap, QFont, QColor
     from PySide6.QtCore import Qt
