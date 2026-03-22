@@ -128,7 +128,7 @@ class BatchSaveDialog(QDialog):
             self.sig_group.buttons()[0].setChecked(True)
         else:
             self.sig_group.buttons()[1].setChecked(True)
-        form.addRow("신뢰 타원 크기:", sig_container)
+        form.addRow("신뢰 타원:", sig_container)
 
         fmt_container = QWidget()
         fmt_h = QHBoxLayout(fmt_container)
