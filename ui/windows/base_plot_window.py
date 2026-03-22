@@ -249,10 +249,6 @@ class BasePlotWindow(QMainWindow):
 
     def update_label_move_style(self, is_on):
         self.design_tab.btn_label_move.setChecked(is_on)
-        self.design_tab.btn_label_move.setStyleSheet(
-            "QPushButton#BtnLabelMove { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;} "
-            "QPushButton#BtnLabelMove:checked { background-color: #E6A23C; color: white; font-weight: bold; border: none; }"
-        )
         if hasattr(self, "tool_indicator") and self.tool_indicator is not None:
             self.tool_indicator.set_label_move_on(is_on)
 
@@ -888,13 +884,6 @@ class BasePlotWindow(QMainWindow):
 
     def update_ruler_style(self, is_on):
         self.btn_ruler.setChecked(is_on)
-        self.btn_ruler.setStyleSheet(
-            """
-            QPushButton#BtnRuler { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333; }
-            QPushButton#BtnRuler:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; }
-            QPushButton#BtnRuler:checked { background-color: #67C23A; color: white; font-weight: bold; border: none; }
-            """
-        )
         if hasattr(self, "tool_indicator") and self.tool_indicator is not None:
             self.tool_indicator.set_ruler_on(is_on)
         if is_on and getattr(self, "btn_draw", None) and self.btn_draw.isChecked():

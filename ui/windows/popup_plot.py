@@ -41,7 +41,7 @@ import config
 from utils import app_logger
 from ui.widgets.filter_panel import LiveVowelFilterPanel
 from ui.widgets.design_panel import DesignSettingsPanel, NoWheelComboBox
-from ui.widgets.icon_widgets import BidirectionalArrowButton
+from ui.widgets.icon_widgets import BidirectionalArrowButton, ShortcutButton
 from ui.widgets.tool_indicator import ToolStatusIndicator
 from ui.widgets.layer_dock import LayerDockWidget
 from draw import DrawModeIndicator
@@ -827,12 +827,14 @@ class PlotPopup(BasePlotWindow):
             btn.setAutoDefault(False)
             btn.setDefault(False)
 
-        btn_apply.setStyleSheet(
-            "background-color: #E6A23C; color: white; font-weight: bold; border-radius: 4px;"
-        )
-        btn_reset.setStyleSheet(
-            "background-color: #909399; color: white; font-weight: bold; border-radius: 4px;"
-        )
+        btn_apply.setStyleSheet("""
+            QPushButton { background-color: #E6A23C; color: white; font-weight: bold; border-radius: 4px; border: none; }
+            QPushButton:hover { background-color: #eebe77; }
+        """)
+        btn_reset.setStyleSheet("""
+            QPushButton { background-color: #909399; color: white; font-weight: bold; border-radius: 4px; border: none; }
+            QPushButton:hover { background-color: #b1b3b8; }
+        """)
 
         btn_apply.clicked.connect(self._on_range_apply_clicked)
         btn_reset.clicked.connect(self.on_reset_clicked)
@@ -872,11 +874,12 @@ class PlotPopup(BasePlotWindow):
         self.btn_vowel_analysis.clicked.connect(self._on_vowel_analysis_clicked)
         tool_group.addWidget(self.btn_vowel_analysis)
 
-        self.btn_compare = QPushButton("다중 플롯 모드 (M)")
+        self.btn_compare = ShortcutButton("assets/shortcuts/M.png", "다중 플롯 모드")
         self.btn_compare.setFixedHeight(35)
         self.btn_compare.setFont(font_normal)
         self.btn_compare.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_compare.setStyleSheet(self.nav_btn_style)
+
         data_list = (
             getattr(self, "plot_data_snapshot", None)
             or self.controller.get_plot_data_list()
@@ -885,21 +888,23 @@ class PlotPopup(BasePlotWindow):
         self.btn_compare.clicked.connect(self.on_btn_compare_click)
         tool_group.addWidget(self.btn_compare)
 
-        self.btn_ruler = QPushButton("눈금자 툴 (R)")
+        self.btn_ruler = ShortcutButton("assets/shortcuts/R.png", "눈금자 툴")
         self.btn_ruler.setObjectName("BtnRuler")
         self.btn_ruler.setCheckable(True)
         self.btn_ruler.setFixedHeight(35)
         self.btn_ruler.setFont(font_normal)
         self.btn_ruler.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_ruler.setStyleSheet("""
-            QPushButton#BtnRuler { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;}
-            QPushButton#BtnRuler:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; }
-            QPushButton#BtnRuler:checked { background-color: #67C23A; color: white; font-weight: bold; border: none; }
+            QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;}
+            QPushButton:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; color: #409EFF; }
+            QPushButton:checked { background-color: #67C23A; color: white; font-weight: bold; border: none; }
         """)
+
         self.btn_ruler.clicked.connect(self.on_toggle_ruler)
         tool_group.addWidget(self.btn_ruler)
 
-        self.btn_draw = QPushButton("그리기 (P)")
+        self.btn_draw = ShortcutButton("assets/shortcuts/P.png", "그리기")
+        self.btn_draw.setObjectName("BtnDraw")
         self.btn_draw.setToolTip("")
         self.btn_draw.setCheckable(True)
         self.btn_draw.setFixedHeight(35)
@@ -909,8 +914,9 @@ class PlotPopup(BasePlotWindow):
         self.btn_draw.setStyleSheet("""
             QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333; }
             QPushButton:checked { background-color: #409EFF; color: white; font-weight: bold; border: none; }
-            QPushButton:hover:!checked { background-color: #E4E7ED; }
+            QPushButton:hover:!checked { background-color: #E4E7ED; color: #409EFF; }
         """)
+
         self.btn_draw.clicked.connect(self._on_toggle_draw)
         tool_group.addWidget(self.btn_draw)
 
@@ -930,9 +936,10 @@ class PlotPopup(BasePlotWindow):
             btn.setFixedHeight(34)
             btn.setFont(QFont(self.ui_font_name, 8))
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn.setStyleSheet(
-                "background-color: white; border: 1px solid #C0C4CC; border-radius: 4px;"
-            )
+            btn.setStyleSheet("""
+                QPushButton { background-color: white; border: 1px solid #C0C4CC; border-radius: 4px; }
+                QPushButton:hover { background-color: #F5F7FA; border: 1px solid #909399; }
+            """)
             btn.clicked.connect(
                 lambda checked, f=fmt: self._on_download_plot(checked, f)
             )
@@ -943,9 +950,10 @@ class PlotPopup(BasePlotWindow):
         btn_batch.setFixedHeight(38)
         btn_batch.setFont(font_normal)
         btn_batch.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        btn_batch.setStyleSheet(
-            "background-color: #409EFF; color: white; font-weight: bold; border-radius: 4px;"
-        )
+        btn_batch.setStyleSheet("""
+            QPushButton { background-color: #409EFF; color: white; font-weight: bold; border-radius: 4px; }
+            QPushButton:hover { background-color: #66B1FF; }
+        """)
         btn_batch.clicked.connect(self.on_batch_save)
         export_group.addWidget(btn_batch)
 

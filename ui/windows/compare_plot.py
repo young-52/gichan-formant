@@ -43,6 +43,7 @@ from PySide6.QtGui import (
 )
 
 from ui.widgets.canvas_fixed import FixedFigureCanvas
+from ui.widgets.icon_widgets import ShortcutButton
 
 from engine.plot_engine import PlotEngine
 from ui.widgets.tool_indicator import ToolStatusIndicator
@@ -1082,12 +1083,14 @@ class ComparePlotPopup(BasePlotWindow):
             btn.setAutoDefault(False)
             btn.setDefault(False)
 
-        btn_apply.setStyleSheet(
-            "background-color: #E6A23C; color: white; font-weight: bold; border-radius: 4px;"
-        )
-        btn_reset.setStyleSheet(
-            "background-color: #909399; color: white; font-weight: bold; border-radius: 4px;"
-        )
+        btn_apply.setStyleSheet("""
+            QPushButton { background-color: #E6A23C; color: white; font-weight: bold; border-radius: 4px; border: none; }
+            QPushButton:hover { background-color: #eebe77; }
+        """)
+        btn_reset.setStyleSheet("""
+            QPushButton { background-color: #909399; color: white; font-weight: bold; border-radius: 4px; border: none; }
+            QPushButton:hover { background-color: #b1b3b8; }
+        """)
 
         btn_apply.clicked.connect(self._on_range_apply_clicked)
         btn_reset.clicked.connect(self.on_reset_clicked)
@@ -1134,21 +1137,23 @@ class ComparePlotPopup(BasePlotWindow):
         """
         self.btn_vowel_analysis.setStyleSheet(nav_btn_style)
 
-        self.btn_ruler = QPushButton("눈금자 툴 (R)")
+        self.btn_ruler = ShortcutButton("assets/shortcuts/R.png", "눈금자 툴")
         self.btn_ruler.setObjectName("BtnRuler")
         self.btn_ruler.setCheckable(True)
         self.btn_ruler.setFixedHeight(35)
         self.btn_ruler.setFont(font_normal)
         self.btn_ruler.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_ruler.setStyleSheet("""
-            QPushButton#BtnRuler { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;}
-            QPushButton#BtnRuler:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; }
-            QPushButton#BtnRuler:checked { background-color: #67C23A; color: white; font-weight: bold; border: none; }
+            QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;}
+            QPushButton:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; color: #409EFF; }
+            QPushButton:checked { background-color: #67C23A; color: white; font-weight: bold; border: none; }
         """)
+
         self.btn_ruler.clicked.connect(self.on_toggle_ruler)
         tool_group.addWidget(self.btn_ruler)
 
-        self.btn_draw = QPushButton("그리기 (P)")
+        self.btn_draw = ShortcutButton("assets/shortcuts/P.png", "그리기")
+        self.btn_draw.setObjectName("BtnDraw")
         self.btn_draw.setCheckable(True)
         self.btn_draw.setToolTip("")
         self.btn_draw.setFixedHeight(35)
@@ -1157,10 +1162,11 @@ class ComparePlotPopup(BasePlotWindow):
         self.btn_draw.setEnabled(True)
         self.btn_draw.setStyleSheet("""
             QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333; }
-            QPushButton:hover:!checked { background-color: #E4E7ED; }
+            QPushButton:hover:!checked { background-color: #E4E7ED; color: #409EFF; }
             QPushButton:checked { background-color: #409EFF; color: white; font-weight: bold; border: none; }
             QPushButton:disabled { background-color: #F5F7FA; color: #C0C4CC; border: 1px solid #E4E7ED; }
         """)
+
         self.btn_draw.clicked.connect(self._on_toggle_draw)
         tool_group.addWidget(self.btn_draw)
 
@@ -1180,9 +1186,10 @@ class ComparePlotPopup(BasePlotWindow):
             btn.setFixedHeight(34)
             btn.setFont(QFont(self.ui_font_name, 8))
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn.setStyleSheet(
-                "background-color: white; border: 1px solid #C0C4CC; border-radius: 4px;"
-            )
+            btn.setStyleSheet("""
+                QPushButton { background-color: white; border: 1px solid #C0C4CC; border-radius: 4px; }
+                QPushButton:hover { background-color: #F5F7FA; border: 1px solid #909399; }
+            """)
             btn.clicked.connect(
                 lambda checked, f=fmt: self._on_download_plot(checked, f)
             )

@@ -952,3 +952,27 @@ class BidirectionalArrowButton(QPushButton):
             int(x_left), int(y_bottom), int(x_left + head), int(y_bottom + head)
         )
         painter.end()
+
+
+class ShortcutButton(QPushButton):
+    """
+    버튼 좌측 중앙에 단축키 아이콘(28x28)을 고정 렌더링하고, 텍스트는 버튼에 네이티브로 정렬하는 커스텀 버튼.
+    내부 레이아웃(QHBoxLayout)과 QLabel을 사용하지 않아, 스타일시트(Hover, Checked)의 네이티브 글자색 변환을 완벽히 지원합니다.
+    """
+
+    def __init__(self, icon_path, text, parent=None):
+        super().__init__(text, parent)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._icon_pixmap = QIcon(icon_path).pixmap(QSize(28, 28))
+
+    def paintEvent(self, event):
+        # 1. Qt가 버튼의 배경, 테두리, 그리고 네이티브 "텍스트"를 그리도록 함
+        # (stylesheet의 background, color, CSS pseudo-states(':hover', ':checked') 등이 완벽히 작동)
+        super().paintEvent(event)
+
+        # 2. 아이콘을 좌측(x=10, y=중앙)에 그리기
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        icon_y = (self.height() - 28) // 2
+        painter.drawPixmap(10, icon_y, 28, 28, self._icon_pixmap)
+        painter.end()

@@ -34,6 +34,7 @@ from ui.widgets.icon_widgets import (
     LinePreviewButton,
     MarkerShapeButton,
     ColorCircleButton,
+    ShortcutButton,
 )
 from ui.widgets.display_utils import (
     truncate_display_name,
@@ -418,16 +419,18 @@ class DesignSettingsPanel(QWidget):
         label_header_layout.addStretch()
         label_group.addWidget(label_header_row)
 
-        self.btn_label_move = QPushButton("라벨 위치 이동 (T)")
+        self.btn_label_move = ShortcutButton("assets/shortcuts/T.png", "라벨 위치 이동")
         self.btn_label_move.setObjectName("BtnLabelMove")
         self.btn_label_move.setCheckable(True)
         self.btn_label_move.setFixedHeight(32)
         self.btn_label_move.setFont(font_normal)
         self.btn_label_move.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_label_move.setStyleSheet("""
-            QPushButton#BtnLabelMove { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;}
-            QPushButton#BtnLabelMove:checked { background-color: #E6A23C; color: white; font-weight: bold; border: none; }
+            QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333;}
+            QPushButton:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; color: #409EFF; }
+            QPushButton:checked { background-color: #E6A23C; color: white; font-weight: bold; border: none; }
         """)
+
         self.btn_label_move.clicked.connect(self.label_move_clicked.emit)
         label_group.addWidget(self.btn_label_move)
         label_group.addSpacing(4)
@@ -711,12 +714,8 @@ class DesignSettingsPanel(QWidget):
         self.btn_lock.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_lock.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_lock.setStyleSheet("""
-            QPushButton {
-                background-color: #F4F4F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #909399;
-            }
-            QPushButton:checked {
-                background-color: #ECF5FF; border: 1px solid #409EFF; color: #409EFF;
-            }
+            QPushButton { background-color: #F4F4F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #909399; }
+            QPushButton:checked { background-color: #ECF5FF; border: 1px solid #409EFF; color: #409EFF; }
             QPushButton:hover:!checked { background-color: #E4E7ED; color: #606266; }
         """)
 
@@ -726,9 +725,7 @@ class DesignSettingsPanel(QWidget):
         self.btn_reset.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_reset.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_reset.setStyleSheet("""
-            QPushButton {
-                background-color: #F4F4F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #F56C6C;
-            }
+            QPushButton { background-color: #F4F4F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #F56C6C; }
             QPushButton:hover { background-color: #FEF0F0; border-color: #FBC4C4; }
         """)
         self.btn_reset.clicked.connect(self._reset_to_defaults)
@@ -963,15 +960,18 @@ class CompareDesignSettingsPanel(QWidget):
         lbl_group.setSpacing(14)
         lbl_group.addWidget(QLabel("라벨과 중심점", font=font_bold))
 
-        btn_label_move = QPushButton("라벨 위치 이동 (T)")
+        btn_label_move = ShortcutButton("assets/shortcuts/T.png", "라벨 위치 이동")
+        btn_label_move.setObjectName("BtnLabelMove")
         btn_label_move.setCheckable(True)
         btn_label_move.setFixedHeight(32)
         btn_label_move.setFont(font_normal)
         btn_label_move.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_label_move.setStyleSheet("""
             QPushButton { background-color: #F0F2F5; border: 1px solid #DCDFE6; border-radius: 4px; color: #333; }
+            QPushButton:hover:!checked { background-color: #E4E7ED; border: 1px solid #C0C4CC; color: #409EFF; }
             QPushButton:checked { background-color: #E6A23C; color: white; font-weight: bold; border: none; }
         """)
+
         btn_label_move.clicked.connect(lambda: self.label_move_clicked.emit(series))
         lbl_group.addWidget(btn_label_move)
         lbl_group.addSpacing(4)
