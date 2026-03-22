@@ -10,11 +10,9 @@ import importlib
 HEAVY_LIBS = [
     "pandas",
     "numpy",
-    "matplotlib",
     "matplotlib.pyplot",
     "matplotlib.font_manager",
     "scipy.stats",
-    "scipy.linalg",
 ]
 
 
@@ -128,15 +126,33 @@ def warm_up(splash=None, context=None):
     except Exception as e:
         app_logger.debug(f"[Startup] Log cleanup failed: {e}")
 
-    # 4. 라이브러리 사전 임포트
-    for lib_name in HEAVY_LIBS:
-        _update_msg(f"Loading {lib_name}...")
+    # 4. 라이브러리 병렬 임포트 (ThreadPoolExecutor 활용)
+    _update_msg("Optimizing Library Loading...")
+    import concurrent.futures
+
+    def load_lib(lib_name):
         try:
             if lib_name not in sys.modules:
                 importlib.import_module(lib_name)
-                app_logger.debug(f"[Startup] Loaded {lib_name}")
+                return True, lib_name
+            return True, lib_name
         except Exception as e:
-            app_logger.error(f"[Startup] Failed to load {lib_name}: {e}")
+            return False, f"{lib_name}: {e}"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(HEAVY_LIBS)) as executor:
+        futures = {executor.submit(load_lib, lib): lib for lib in HEAVY_LIBS}
+
+        for future in concurrent.futures.as_completed(futures):
+            lib_name = futures[future]
+            try:
+                success, result = future.result()
+                if success:
+                    app_logger.debug(f"[Startup] Loaded {result}")
+                    _update_msg(f"Loaded {result}...")
+                else:
+                    app_logger.error(f"[Startup] Failed to load {result}")
+            except Exception as e:
+                app_logger.error(f"[Startup] Future exception for {lib_name}: {e}")
 
     # 5. Matplotlib 백엔드 및 폰트 워밍업
     _update_msg("Initializing Graphics Engine...")

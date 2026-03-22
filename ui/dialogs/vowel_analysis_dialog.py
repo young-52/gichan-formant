@@ -571,7 +571,9 @@ class VowelAnalysisDialog(QDialog):
                 and pillai_page.selection_count >= 3
             ):
                 data = pillai_page.get_combination_results()
-                df = pd.DataFrame(data, columns=["모음 조합", "Pillai Score"])
+                df = pd.DataFrame(
+                    data, columns=["모음 조합", "Pillai Score", "p-value"]
+                )
 
                 # Suffix: _pillai_analysis
                 base_name = _analysis_base_name(
@@ -637,7 +639,9 @@ class VowelAnalysisDialog(QDialog):
                 and pillai_page.selection_count >= 3
             ):
                 data = pillai_page.get_combination_results()
-                df = pd.DataFrame(data, columns=["모음 조합", "Pillai Score"])
+                df = pd.DataFrame(
+                    data, columns=["모음 조합", "Pillai Score", "p-value"]
+                )
 
                 # Suffix: _pillai_analysis
                 base_name = _analysis_base_name(

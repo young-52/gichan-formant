@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
-from scipy import stats
 from typing import Union
 
 
@@ -242,13 +241,15 @@ def remove_outliers_mahalanobis(df, plot_type, sigma_option):
     if xy_df is None or y_col is None or x_col is None:
         return df.copy(), 0, {}, {"labels_too_small": set(), "labels_tested": set()}
 
-    # 자유도 2 카이제곱 임계값
+    # 자유도 2 카이제곱 임계값 (미리 계산된 상수 사용)
+    # stats.chi2.ppf(0.6827, df=2) ≒ 2.2957
+    # stats.chi2.ppf(0.9545, df=2) ≒ 6.1798
     if sigma_option == "1sigma":
         # 68.27% 포함 → 상위 31.73% 컷오프
-        threshold = stats.chi2.ppf(0.6827, df=2)
+        threshold = 2.2957
     else:
         # 2sigma: 95.45% 포함 → 상위 4.55% 컷오프 (약 5.991)
-        threshold = stats.chi2.ppf(0.9545, df=2)
+        threshold = 6.1798
 
     keep_mask = np.ones(len(xy_df), dtype=bool)
     per_label_removed = {}

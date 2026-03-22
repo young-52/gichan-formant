@@ -16,6 +16,28 @@ from PySide6.QtGui import QColor, QFont
 from utils.pillai_stats import calculate_pillai_score
 from utils.vowel_sorting import get_vowel_sort_key
 
+
+def get_significance_stars(p_value):
+    if p_value is None:
+        return ""
+    if p_value < 0.001:
+        return "***"
+    if p_value < 0.01:
+        return "**"
+    if p_value < 0.05:
+        return "*"
+    return ""
+
+
+def format_p_value(p_val):
+    if p_val is None:
+        return "N/A"
+    stars = get_significance_stars(p_val)
+    if p_val < 0.001:
+        return f"< 0.001 {stars}".strip()
+    return f"{p_val:.3f} {stars}".strip()
+
+
 # Scrollbar style (copied from vowel_analysis_dialog.py or move to a separate theme file later)
 MODERN_SCROLLBAR_STYLE = """
     QScrollBar:vertical {
@@ -285,7 +307,10 @@ class PillaiScorePage(QWidget):
         self.single_page = QWidget()
         self.single_page.setStyleSheet("background: transparent; border: none;")
         single_layout = QVBoxLayout(self.single_page)
-        single_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # 상단 여백 (하단보다 작게 설정하여 내용을 약간 위로 배치)
+        single_layout.addStretch(2)
+
         self.lbl_vowels_2 = QLabel("-")
         self.lbl_vowels_2.setStyleSheet(
             "font-size: 20px; font-weight: bold; color: #303133; background: transparent; border: none;"
@@ -305,6 +330,17 @@ class PillaiScorePage(QWidget):
         )
         self.lbl_pillai_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
         single_layout.addWidget(self.lbl_pillai_val)
+
+        self.lbl_p_value = QLabel("")
+        self.lbl_p_value.setStyleSheet(
+            "font-size: 14px; color: #909399; background: transparent; border: none; margin-top: 4px;"
+        )
+        self.lbl_p_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        single_layout.addWidget(self.lbl_p_value)
+
+        # 하단 여백 (상단보다 크게 설정하여 전체적으로 위쪽으로 치우치게 함)
+        single_layout.addStretch(3)
+
         self.result_stack.addWidget(self.single_page)
 
         self.multi_page = QWidget()
@@ -321,9 +357,19 @@ class PillaiScorePage(QWidget):
         multi_layout.addWidget(self.lbl_multi_header)
 
         self.multi_table = QTableWidget()
-        self.multi_table.setColumnCount(2)
-        self.multi_table.setHorizontalHeaderLabels(["모음 조합", "Pillai Score"])
-        self.multi_table.horizontalHeader().setStretchLastSection(True)
+        self.multi_table.setColumnCount(3)
+        self.multi_table.setHorizontalHeaderLabels(
+            ["모음 조합", "Pillai Score", "p-value"]
+        )
+        self.multi_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Interactive
+        )
+        self.multi_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.multi_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
         self.multi_table.horizontalHeader().setStyleSheet("""
             QHeaderView::section { 
                 background-color: #F8FAFB; 
@@ -369,7 +415,8 @@ class PillaiScorePage(QWidget):
         for r in range(rows):
             pair = self.multi_table.item(r, 0).text()
             score = self.multi_table.item(r, 1).text()
-            data.append([pair, score])
+            pval = self.multi_table.item(r, 2).text()
+            data.append([pair, score, pval])
         return data
 
     def _reset_selection(self):
@@ -396,19 +443,26 @@ class PillaiScorePage(QWidget):
     def _handle_single_pair(self, vowels):
         v1, v2 = vowels
         self.lbl_vowels_2.setText(f"{v1}  vs  {v2}")
-        score = self._calc_pillai(v1, v2)
+        score, p_val = self._calc_pillai(v1, v2)
         if score is not None:
             self.lbl_pillai_val.setText(f"{score:.4f}")
+            if p_val is not None:
+                self.lbl_p_value.setText(f"p-value: {format_p_value(p_val)}")
+            else:
+                self.lbl_p_value.setText("p-value: N/A")
         else:
             self.lbl_pillai_val.setText("N/A")
+            self.lbl_p_value.setText("")
 
     def _handle_multi_pairs(self, vowels):
         pairs = list(itertools.combinations(vowels, 2))
         self.multi_table.setRowCount(len(pairs))
         for i, (v1, v2) in enumerate(pairs):
             pair_text = f"{v1} - {v2}"
-            score = self._calc_pillai(v1, v2)
+            score, p_val = self._calc_pillai(v1, v2)
             score_text = f"{score:.4f}" if score is not None else "N/A"
+
+            p_val_text = format_p_value(p_val)
 
             it_pair = QTableWidgetItem(pair_text)
             it_pair.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -418,8 +472,16 @@ class PillaiScorePage(QWidget):
             if score is not None and score > 0.8:  # 분리도가 높은 경우 강조
                 it_score.setForeground(QColor("#409EFF"))
 
+            it_pval = QTableWidgetItem(p_val_text)
+            it_pval.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if p_val is not None and p_val < 0.05:
+                it_pval.setForeground(
+                    QColor("#67C23A")
+                )  # 유의미한 경우 녹색 (Element UI Success 색상)
+
             self.multi_table.setItem(i, 0, it_pair)
             self.multi_table.setItem(i, 1, it_score)
+            self.multi_table.setItem(i, 2, it_pval)
 
     def _calc_pillai(self, v1, v2):
         try:
