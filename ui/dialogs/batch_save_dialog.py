@@ -14,12 +14,46 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from PySide6.QtGui import QFont, QRegularExpressionValidator
-from PySide6.QtCore import Qt, QRegularExpression
+from PySide6.QtCore import Qt, QRegularExpression, QObject, QEvent
 import inspect
 
 from utils import icon_utils
 import config
 from utils import app_logger
+
+
+class BatchSaveInputFilter(QObject):
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if (
+                key
+                in (
+                    Qt.Key.Key_Backspace,
+                    Qt.Key.Key_Delete,
+                    Qt.Key.Key_Left,
+                    Qt.Key.Key_Right,
+                    Qt.Key.Key_Up,
+                    Qt.Key.Key_Down,
+                    Qt.Key.Key_Enter,
+                    Qt.Key.Key_Return,
+                    Qt.Key.Key_Tab,
+                    Qt.Key.Key_Home,
+                    Qt.Key.Key_End,
+                )
+                or event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            ):
+                return False
+
+            text = event.text()
+            if text:
+                if not (text.isdigit() or text in ("-", ".")):
+                    try:
+                        print(f"[일괄 저장 설정] 잘못된 입력 차단됨: '{text}'")
+                    except Exception:
+                        pass
+                    return True  # Block
+        return super().eventFilter(obj, event)
 
 
 class BatchSaveDialog(QDialog):
@@ -42,10 +76,15 @@ class BatchSaveDialog(QDialog):
             config.DIALOG_BATCH_SAVE_WIDTH_PX, config.DIALOG_BATCH_SAVE_HEIGHT_PX
         )
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
         self.ui_font_name = parent.ui_font_name
         self._apply_window_icon()
         self._setup_ui(current_ranges, f1_unit, f2_unit, x_axis_label, current_sigma)
+
+    def mousePressEvent(self, event):
+        self.setFocus()
+        super().mousePressEvent(event)
 
     def _apply_window_icon(self):
         try:
@@ -73,6 +112,7 @@ class BatchSaveDialog(QDialog):
         num_validator = QRegularExpressionValidator(
             QRegularExpression(r"^-?\d*\.?\d*$")
         )
+        self._input_filter = BatchSaveInputFilter(self)
         f1_frame = QHBoxLayout()
         self.ent_y_min = QLineEdit(ranges["y_min"])
         self.ent_y_max = QLineEdit(ranges["y_max"])
@@ -80,6 +120,7 @@ class BatchSaveDialog(QDialog):
             le.setFixedWidth(config.RANGE_EDIT_FIXED_WIDTH_PX)
             le.setAlignment(Qt.AlignmentFlag.AlignCenter)
             le.setValidator(num_validator)
+            le.installEventFilter(self._input_filter)
         f1_frame.addWidget(self.ent_y_min)
         f1_frame.addWidget(QLabel("~"))
         f1_frame.addWidget(self.ent_y_max)
@@ -93,6 +134,7 @@ class BatchSaveDialog(QDialog):
             le.setFixedWidth(config.RANGE_EDIT_FIXED_WIDTH_PX)
             le.setAlignment(Qt.AlignmentFlag.AlignCenter)
             le.setValidator(num_validator)
+            le.installEventFilter(self._input_filter)
         f2_frame.addWidget(self.ent_x_min)
         f2_frame.addWidget(QLabel("~"))
         f2_frame.addWidget(self.ent_x_max)

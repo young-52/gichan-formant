@@ -962,6 +962,7 @@ class ComparePlotPopup(BasePlotWindow):
 
         self._hz_edit.focusInEvent = _hz_focus_in
         self._bark_edit.focusInEvent = _bark_focus_in
+        conv_row.addStretch()
         conv_row.addWidget(QLabel("Hz", font=font_normal))
         conv_row.addWidget(self._hz_edit)
         conv_row.addWidget(self._conv_btn)
