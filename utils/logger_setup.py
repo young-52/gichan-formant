@@ -17,16 +17,21 @@ def setup_logging(log_dir=None):
     - log_dir이 제공되지 않으면 Windows에서는 AppData\Local\GichanFormant\logs를 사용합니다.
     Returns: logging.Logger
     """
+    # 1. 로그 디렉터리 결정
     if log_dir is None:
         if platform.system() == "Windows":
+            # Windows의 경우 권한이 보장된 로컬 앱 데이터 폴더 사용
             local_app_data = os.environ.get("LOCALAPPDATA")
             if local_app_data:
                 log_dir = os.path.join(local_app_data, "GichanFormant", "logs")
             else:
-                log_dir = "logs"
+                # 최악의 경우 절대 경로로 현재 폴더의 logs 시도
+                log_dir = os.path.join(os.getcwd(), "logs")
         else:
+            # 타 OS는 현재 폴더 logs 사용
             log_dir = "logs"
 
+    # 2. 디렉터리 생성 (하드코딩된 'logs' 제거하고 넘겨받은 log_dir 사용)
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "app.log")
 
@@ -38,13 +43,13 @@ def setup_logging(log_dir=None):
 
     logger.setLevel(logging.DEBUG)
 
-    # 백그라운드용 상세 포맷: [시간] [레벨] [모듈] 메시지
+    # 3. 포맷터 설정
     formatter = logging.Formatter(
         "%(asctime)s - %(levelname)8s - %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # 1. 파일 핸들러 (TimedRotatingFileHandler: 일 단위, 7일 보관)
+    # 4. 파일 핸들러 (TimedRotatingFileHandler)
     file_handler = TimedRotatingFileHandler(
         log_file, when="D", interval=1, backupCount=7, encoding="utf-8"
     )
@@ -52,7 +57,7 @@ def setup_logging(log_dir=None):
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
 
-    # 2. 콘솔 핸들러 (터미널 출력용 - 개발 및 디버그 기록 포함)
+    # 5. 콘솔 핸들러
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.DEBUG)

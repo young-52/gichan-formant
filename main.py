@@ -102,7 +102,14 @@ if __name__ == "__main__":
     from utils import logger_setup
     from utils import app_logger
 
-    logger_setup.setup_logging()
+    # Windows 권한 문제 방지를 위해 안전한 로그 경로 자동 계산
+    safe_log_dir = None
+    if platform.system() == "Windows":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            safe_log_dir = os.path.join(local_app_data, "GichanFormant", "logs")
+    
+    logger_setup.setup_logging(safe_log_dir)
 
     if platform.system() == "Windows":
         import ctypes
