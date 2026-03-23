@@ -1693,8 +1693,174 @@ class ComparePlotPopup(BasePlotWindow):
         return self.cb_sigma.currentText()
 
     def _ensure_area_label_drag_connected(self):
-        """compare에서는 영역 라벨 드래그 이동을 아직 지원하지 않는다."""
-        return
+        """넓이 텍스트 드래그 이동 연결 (popup과 동일 UX)."""
+        if getattr(self, "_area_label_drag_cids", None) is not None:
+            return
+        if not getattr(self, "canvas", None):
+            return
+        c = self.canvas
+        try:
+            cid_bp = c.mpl_connect(
+                "button_press_event", self._on_canvas_area_label_press
+            )
+            cid_mv = c.mpl_connect(
+                "motion_notify_event", self._on_canvas_area_label_move
+            )
+            cid_br = c.mpl_connect(
+                "button_release_event", self._on_canvas_area_label_release
+            )
+            self._area_label_drag_cids = (cid_bp, cid_mv, cid_br)
+            self._dragging_area_label_obj = None
+            self._area_label_cursor_changed = False
+        except Exception:
+            self._area_label_drag_cids = ()
+
+    def _active_draw_layer_dock(self):
+        if hasattr(self, "_layer_stack") and self._layer_stack is not None:
+            if self._layer_stack.currentIndex() == 0:
+                return getattr(self, "_layer_dock_blue", None)
+            return getattr(self, "_layer_dock_red", None)
+        return getattr(self, "_layer_dock_blue", None)
+
+    def _is_area_label_focused(self, obj):
+        """부모 영역(polygon) 레이어가 활성 도크에서 단일 선택일 때만 True."""
+        parent_id = getattr(obj, "parent_id", None)
+        if not parent_id:
+            return False
+        objs = self._get_current_draw_objects()
+        dock = self._active_draw_layer_dock()
+        if not dock:
+            return False
+        sel = getattr(dock, "_selected_draw_indices", set())
+        if len(sel) != 1:
+            return False
+        sel_idx = next(iter(sel))
+        if not (0 <= sel_idx < len(objs)):
+            return False
+        sel_obj = objs[sel_idx]
+        return (
+            getattr(sel_obj, "type", "") == "polygon"
+            and getattr(sel_obj, "id", None) == parent_id
+        )
+
+    def _area_label_reset_to_centroid(self, obj):
+        """넓이 텍스트를 부모 폴리곤 무게중심으로 되돌린 뒤 화면·레이어 목록 갱신."""
+        objs = self._get_current_draw_objects()
+        pid = getattr(obj, "parent_id", None)
+        if not pid:
+            return
+        for o in objs:
+            if getattr(o, "type", "") == "polygon" and getattr(o, "id", None) == pid:
+                pts = getattr(o, "points", None)
+                if pts and len(pts) >= 3:
+                    xs = [p[0] for p in pts]
+                    ys = [p[1] for p in pts]
+                    obj.x = sum(xs) / len(xs)
+                    obj.y = sum(ys) / len(ys)
+                break
+        refs = getattr(self, "_draw_layer_area_label_refs", [])
+        for art, o in refs:
+            if o is obj:
+                try:
+                    art.set_position((obj.x, obj.y))
+                except Exception:
+                    pass
+                break
+        if self.canvas:
+            self.canvas.draw_idle()
+        if hasattr(self, "_layer_dock_blue") and self._layer_dock_blue is not None:
+            self._layer_dock_blue.update_draw_layer_list(objs)
+        if hasattr(self, "_layer_dock_red") and self._layer_dock_red is not None:
+            self._layer_dock_red.update_draw_layer_list(objs)
+
+    def _area_label_hit_at_px(self, x_px, y_px, pad_px=14):
+        """픽셀 좌표 (x_px, y_px)에서 넓이 텍스트 히트 여부."""
+        refs = getattr(self, "_draw_layer_area_label_refs", [])
+        if not refs or not getattr(self, "figure", None) or not self.figure.axes:
+            return None
+        try:
+            renderer = self.canvas.get_renderer()
+        except Exception:
+            return None
+        for art, obj in refs:
+            try:
+                bbox = art.get_window_extent(renderer)
+                x0, x1 = min(bbox.x0, bbox.x1) - pad_px, max(bbox.x0, bbox.x1) + pad_px
+                y0, y1 = min(bbox.y0, bbox.y1) - pad_px, max(bbox.y0, bbox.y1) + pad_px
+                if x0 <= x_px <= x1 and y0 <= y_px <= y1:
+                    return obj
+            except Exception:
+                continue
+        return None
+
+    def _on_canvas_area_label_press(self, event):
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            return
+        if getattr(self, "_draw_tool", None) is not None:
+            return
+        hit = self._area_label_hit_at_px(event.x, event.y)
+        if hit is None:
+            return
+        if event.button == 3:
+            if self._is_area_label_focused(hit):
+                self._area_label_reset_to_centroid(hit)
+            return
+        if event.button != 1:
+            return
+        if self._is_area_label_focused(hit):
+            self._dragging_area_label_obj = hit
+
+    def _on_canvas_area_label_move(self, event):
+        obj = getattr(self, "_dragging_area_label_obj", None)
+        if obj is not None:
+            if (
+                event.inaxes is not None
+                and event.xdata is not None
+                and event.ydata is not None
+            ):
+                obj.x = float(event.xdata)
+                obj.y = float(event.ydata)
+                refs = getattr(self, "_draw_layer_area_label_refs", [])
+                for art, o in refs:
+                    if o is obj:
+                        try:
+                            art.set_position((obj.x, obj.y))
+                        except Exception:
+                            pass
+                        break
+                if self.canvas:
+                    self.canvas.draw_idle()
+            return
+        if getattr(self, "btn_draw", None) and self.btn_draw.isChecked():
+            return
+        if getattr(self, "_draw_tool", None) is not None:
+            return
+        hit = (
+            self._area_label_hit_at_px(event.x, event.y)
+            if event.inaxes is not None
+            else None
+        )
+        try:
+            if hit is not None and self._is_area_label_focused(hit):
+                if not getattr(self, "_area_label_cursor_changed", False):
+                    self.canvas.setCursor(Qt.CursorShape.SizeAllCursor)
+                    self._area_label_cursor_changed = True
+            else:
+                if getattr(self, "_area_label_cursor_changed", False):
+                    self.canvas.unsetCursor()
+                    self._area_label_cursor_changed = False
+        except Exception:
+            pass
+
+    def _on_canvas_area_label_release(self, event):
+        if getattr(self, "_dragging_area_label_obj", None) is not None:
+            self._dragging_area_label_obj = None
+        if getattr(self, "_area_label_cursor_changed", False):
+            try:
+                self.canvas.unsetCursor()
+            except Exception:
+                pass
+            self._area_label_cursor_changed = False
 
     def closeEvent(self, event):
         """창 종료 시 전역 필터/툴 상태를 정리한 뒤 부모 종료 로직을 호출합니다."""

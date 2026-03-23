@@ -642,17 +642,19 @@ class BasePlotWindow(QMainWindow):
                             "DejaVu Serif",
                         ]
                     text_alpha = 0.3 if getattr(obj, "semi", False) else 1.0
+                    # 넓이 텍스트 폰트 크기 (원하면 이 숫자만 바꾸세요)
+                    area_label_font_size = 12
                     txt_artist = ax.text(
                         getattr(obj, "x", 0),
                         getattr(obj, "y", 0),
                         txt,
-                        fontsize=10,
+                        fontsize=area_label_font_size,
                         fontfamily=font_family,
                         color="#303133",
                         alpha=text_alpha,
                         va="center",
                         ha="center",
-                        zorder=2,
+                        zorder=100,
                         clip_on=True,
                     )
                     self._draw_layer_artists.append(txt_artist)
