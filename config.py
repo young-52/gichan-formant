@@ -17,11 +17,26 @@ AUTHOR = "Bae Gichan"
 COPYRIGHT_TEXT = f"Copyright © 2026 {AUTHOR}. All rights reserved."
 
 # 경로 설정 (Path Config)
+import sys
 import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 앱이 PyInstaller로 묶여서 실행 중인지, 아니면 파이썬 소스로 실행 중인지 확인
+if getattr(sys, "frozen", False):
+    # .exe 파일로 실행 중일 때 (사용자 환경)
+    # sys.executable은 GichanFormant.exe 파일 자체의 절대 경로를 의미합니다.
+    ROOT_DIR = os.path.dirname(sys.executable)
+    # --onedir 모드일 경우 내부 리소스 폴더 (_internal) 경로
+    BASE_DIR = sys._MEIPASS
+else:
+    # 파이썬 스크립트로 실행 중일 때 (기찬 님의 개발 환경)
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = ROOT_DIR
+
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-LOGS_DIR = os.path.join(BASE_DIR, "logs")
+LOGS_DIR = os.path.join(ROOT_DIR, "logs")
+
+# Sentry 플래그 파일 경로는 반드시 ROOT_DIR(exe가 있는 곳)로 설정해야 인스톨러가 만든 파일을 찾을 수 있습니다.
+SENTRY_FLAG_PATH = os.path.join(ROOT_DIR, "sentry_opt_in.config")
 
 
 # =============================================================================

@@ -10,13 +10,23 @@ from PySide6.QtCore import Qt
 
 import config
 
-# Sentry 초기화 (가장 먼저 실행하여 모든 오류를 포착)
-sentry_sdk.init(
-    dsn=config.SENTRY_DSN,
-    send_default_pii=config.SENTRY_SEND_PII,
-    environment=getattr(config, "SENTRY_ENV", "production"),
-    release=config.APP_VERSION,
-)
+
+# Sentry 초기화 함수
+def init_sentry():
+    if os.path.exists(config.SENTRY_FLAG_PATH):
+        sentry_sdk.init(
+            dsn=config.SENTRY_DSN,
+            send_default_pii=config.SENTRY_SEND_PII,
+            environment=getattr(config, "SENTRY_ENV", "production"),
+            release=config.APP_VERSION,
+        )
+    else:
+        # 동의 플래그가 없으면 Sentry를 초기화하지 않음
+        pass
+
+
+# 실행 시 Sentry 초기화 시도
+init_sentry()
 
 
 if __name__ == "__main__":
