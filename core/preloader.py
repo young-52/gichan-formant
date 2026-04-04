@@ -159,7 +159,7 @@ def warm_up(splash=None, context=None):
                 success, result = future.result()
                 if success:
                     app_logger.debug(f"[Startup] Loaded {result}")
-                    _update_msg(f"Loaded {result}...")
+                    _update_msg(f"Loading {result}...")
                 else:
                     app_logger.error(f"[Startup] Failed to load {result}")
             except Exception as e:
